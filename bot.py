@@ -12,7 +12,9 @@ from dotenv import load_dotenv
 
 MIN_MARKET_CAP = 5_000
 MAX_MARKET_CAP = 20_000
-STATE_FILE = Path(__file__).resolve().parent / "alerted_coins.json"
+APP_DIR = Path(__file__).resolve().parent
+DATA_DIR = Path(os.getenv("AXIOM_DATA_DIR", APP_DIR))
+STATE_FILE = DATA_DIR / "alerted_coins.json"
 sol_price = None
 sol_price_checked_at = 0
 
@@ -109,7 +111,9 @@ def send_discord_alert(webhook_url, coin, market_cap):
 
 
 async def run_bot():
-    load_dotenv()
+    env_file = os.getenv("AXIOM_ENV_FILE", APP_DIR / ".env")
+    load_dotenv(env_file)
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
     webhook_url = os.environ["DISCORD_WEBHOOK_URL"]
     access_token = os.environ["AXIOM_ACCESS_TOKEN"]
     refresh_token = os.environ["AXIOM_REFRESH_TOKEN"]

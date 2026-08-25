@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; font-src 'self'; script-src 'self'" />
+    <title>Axiom Alerts</title>
+    <link rel="stylesheet" href="../node_modules/@fortawesome/fontawesome-free/css/all.min.css" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="ambient ambient-one"></div>
+    <div class="ambient ambient-two"></div>
+
+    <header class="titlebar">
+      <div class="window-controls">
+        <button id="closeWindow" class="traffic close" aria-label="Close"></button>
+        <button id="minimizeWindow" class="traffic minimize" aria-label="Minimize"></button>
+        <span class="traffic maximize" aria-hidden="true"></span>
+      </div>
+      <div class="titlebar-name">AXIOM ALERTS</div>
+      <div class="titlebar-spacer"></div>
+    </header>
+
+    <main class="app-shell">
+      <section class="hero">
+        <div class="brand">
+          <div class="brand-mark"><i class="fa-solid fa-satellite-dish"></i></div>
+          <div>
+            <p class="eyebrow">REAL-TIME SIGNAL MONITOR</p>
+            <h1>Market cap alerts,<br /><span>without the noise.</span></h1>
+          </div>
+        </div>
+
+        <div class="hero-actions">
+          <button id="openAxiom" class="ghost-button">
+            Open Axiom <i class="fa-solid fa-arrow-up-right-from-square"></i>
+          </button>
+          <div class="status-pill" id="statusPill">
+            <span class="status-dot"></span>
+            <span id="statusText">Stopped</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="control-panel glass-panel">
+        <div class="monitor-copy">
+          <div class="section-icon"><i class="fa-solid fa-wave-square"></i></div>
+          <div>
+            <p class="panel-label">MONITOR</p>
+            <h2>New coin discovery</h2>
+            <p>Watching Axiom's live feed for coins entering your target window.</p>
+          </div>
+        </div>
+
+        <div class="range-card">
+          <div class="range-labels">
+            <span>Trigger range</span>
+            <strong>$5K — $20K</strong>
+          </div>
+          <div class="range-track">
+            <span class="range-fill"></span>
+            <span class="range-point start"></span>
+            <span class="range-point end"></span>
+          </div>
+          <div class="range-bounds"><span>$0</span><span>$25K+</span></div>
+        </div>
+
+        <div class="power-controls">
+          <button id="startButton" class="primary-button">
+            <i class="fa-solid fa-play"></i><span>Start monitor</span>
+          </button>
+          <button id="stopButton" class="stop-button" disabled>
+            <i class="fa-solid fa-stop"></i>
+          </button>
+        </div>
+      </section>
+
+      <section class="stats-grid">
+        <article class="stat-card glass-panel">
+          <div class="stat-top">
+            <span>SESSION TIME</span>
+            <i class="fa-regular fa-clock"></i>
+          </div>
+          <strong id="uptime">00:00:00</strong>
+          <p>Active monitoring time</p>
+        </article>
+
+        <article class="stat-card glass-panel">
+          <div class="stat-top">
+            <span>ALERTS SENT</span>
+            <i class="fa-regular fa-bell"></i>
+          </div>
+          <strong id="alertCount">0</strong>
+          <p>This application session</p>
+        </article>
+
+        <article class="stat-card glass-panel">
+          <div class="stat-top">
+            <span>DELIVERY</span>
+            <i class="fa-brands fa-discord"></i>
+          </div>
+          <strong class="delivery">Discord</strong>
+          <p id="credentialStatus">Checking credentials…</p>
+        </article>
+      </section>
+
+      <section class="activity-panel glass-panel">
+        <div class="activity-header">
+          <div>
+            <p class="panel-label">ACTIVITY</p>
+            <h2>Live event stream</h2>
+          </div>
+          <button id="clearActivity" class="icon-button" title="Clear activity">
+            <i class="fa-solid fa-eraser"></i>
+          </button>
+        </div>
+        <div id="activityList" class="activity-list">
+          <div class="empty-state" id="emptyState">
+            <div><i class="fa-solid fa-signal"></i></div>
+            <p>Start the monitor to see live Axiom activity.</p>
+          </div>
+        </div>
+      </section>
+
+      <footer>
+        <span><i class="fa-solid fa-shield-halved"></i> Credentials stay on this PC</span>
+        <span>Closing this window stops the monitor</span>
+      </footer>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>

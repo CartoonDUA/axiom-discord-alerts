@@ -1,0 +1,47 @@
+{
+  "name": "axiom-discord-alerts",
+  "version": "1.0.0",
+  "description": "A desktop monitor for Axiom market-cap alerts",
+  "main": "main.js",
+  "author": "CartoonDUA",
+  "license": "MIT",
+  "scripts": {
+    "icon": "electron scripts/create-icon.js",
+    "start": "electron .",
+    "build": "electron-builder --win portable"
+  },
+  "dependencies": {
+    "@fortawesome/fontawesome-free": "^7.0.0"
+  },
+  "devDependencies": {
+    "electron": "^37.0.0",
+    "electron-builder": "^26.0.0"
+  },
+  "build": {
+    "appId": "com.cartoondua.axiomalerts",
+    "productName": "Axiom Alerts",
+    "asar": true,
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**/*",
+      "assets/icon.png",
+      "node_modules/@fortawesome/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "bot.py",
+        "to": "bot.py"
+      },
+      {
+        "from": ".venv",
+        "to": "python"
+      }
+    ],
+    "win": {
+      "icon": "assets/icon.png",
+      "target": "portable",
+      "artifactName": "Axiom-Alerts-${version}.exe"
+    }
+  }
+}
