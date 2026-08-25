@@ -33,6 +33,12 @@ When an alert fires, click the coin in Recent Activity or use **Open in Axiom** 
 
 Discord alerts include an automated rug-risk rating out of 10 with evidence for deployer history, mint and freeze authority, metadata control, liquidity locking, holder and developer concentration, insider wallets, connected-wallet bubble clusters, and Axiom bundle percentage. Bubble analysis reports how many linked clusters were found, the wallets in the largest cluster, and the percentage of supply it controls. The deployer check links the creator wallet, counts its prior launches, and flags RugCheck's rugged-token history finding. The rating uses RugCheck and Axiom data as a screening signal, not a guarantee that a token is safe or fraudulent.
 
+## Read-only GitHub Pages dashboard
+
+The `docs` folder contains a public dashboard for GitHub Pages. It displays only the Coin Movement settings, Audit Filters, active tracked coins, and safe monitor events. Webhooks, Discord credentials, Axiom tokens, and every other `.env` value are excluded from the public API.
+
+Open the dashboard on the same PC as Axiom Alerts and allow the browser's local-network permission when prompted. The page reads the backend at `http://127.0.0.1:8765`, so the desktop app must remain open. Changes made in the desktop app appear on the dashboard automatically.
+
 ## Build the Windows application
 
 Copy `.env.signing.example` to `.env.signing`, then set `WIN_CSC_LINK` to your trusted `.pfx` certificate and `WIN_CSC_KEY_PASSWORD` to its password. The signing file is ignored by Git and must stay private.

@@ -223,6 +223,8 @@ function logLine(line) {
     return;
   }
 
+  if (/TRACKING_EVENT (\{.+\})$/.test(message)) return;
+
   let level = "info";
   if (/error|failed|exception/i.test(message)) level = "error";
   if (/warning|reconnecting/i.test(message)) level = "warning";

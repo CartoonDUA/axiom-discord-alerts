@@ -555,6 +555,24 @@ def passes_audit(coin, market_cap, settings):
     )
 
 
+def log_tracking(action, coin, address, market_cap, target_market_cap, elapsed=0):
+    logging.info(
+        "TRACKING_EVENT %s",
+        json.dumps(
+            {
+                "action": action,
+                "address": address,
+                "name": first_value(coin, "tokenName", "token_name", "name") or "Unknown coin",
+                "ticker": first_value(coin, "tokenTicker", "token_ticker", "ticker", "symbol") or "?",
+                "marketCap": round(market_cap),
+                "targetCap": round(target_market_cap),
+                "elapsed": round(elapsed, 1),
+            },
+            separators=(",", ":"),
+        ),
+    )
+
+
 async def run_bot():
     env_file = os.getenv("AXIOM_ENV_FILE", APP_DIR / ".env")
     load_dotenv(env_file)
@@ -611,6 +629,8 @@ async def run_bot():
             return
 
         if not passes_audit(coin, market_cap, audit_settings):
+            if address in moves:
+                log_tracking("remove", coin, address, market_cap, target_market_cap)
             moves.pop(address, None)
             return
 
@@ -622,6 +642,8 @@ async def run_bot():
         move = moves.get(address)
 
         if market_cap < start_market_cap:
+            if address in moves:
+                log_tracking("remove", coin, address, market_cap, target_market_cap)
             moves.pop(address, None)
             return
 
@@ -633,6 +655,7 @@ async def run_bot():
                 "started_cap": market_cap,
                 "momentum_sent": False,
                 "green_candle_sent": False,
+                "last_update": now,
             }
             ticker = first_value(coin, "tokenTicker", "token_ticker") or address[:8]
             logging.info(
@@ -641,12 +664,18 @@ async def run_bot():
                 market_cap,
                 target_market_cap,
             )
+            log_tracking("start", coin, address, market_cap, target_market_cap)
             return
 
         elapsed = now - move["started_at"]
         if elapsed > move_window_seconds:
             moves.pop(address, None)
+            log_tracking("remove", coin, address, market_cap, target_market_cap, elapsed)
             return
+
+        if now - move["last_update"] >= 1:
+            move["last_update"] = now
+            log_tracking("update", coin, address, market_cap, target_market_cap, elapsed)
 
         green_candle_target = move["started_cap"] * (1 + green_candle_percent / 100)
         momentum_target = move["started_cap"] * (1 + early_momentum_percent / 100)
@@ -705,6 +734,7 @@ async def run_bot():
             logging.info("No webhook route matched rug rating %s for %s", rug["rating"], address)
         alerted_coins.add(address)
         moves.pop(address, None)
+        log_tracking("remove", coin, address, market_cap, target_market_cap, elapsed)
         save_alerted_coins(alerted_coins)
         logging.info(
             "ALERT_EVENT %s",

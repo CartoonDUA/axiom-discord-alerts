@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; connect-src http://127.0.0.1:8765; style-src 'self' https://cdnjs.cloudflare.com; font-src https://cdnjs.cloudflare.com; script-src 'self'"
+    />
+    <meta name="theme-color" content="#090b10" />
+    <title>Axiom Alerts · Live Dashboard</title>
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/7.0.0/css/all.min.css" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="glow glow-one"></div>
+    <div class="glow glow-two"></div>
+
+    <header class="topbar">
+      <a class="brand" href="https://github.com/CartoonDUA/axiom-discord-alerts" target="_blank" rel="noreferrer">
+        <span class="brand-icon"><i class="fa-solid fa-satellite-dish"></i></span>
+        <span><strong>Axiom Alerts</strong><small>Live dashboard</small></span>
+      </a>
+      <div id="connectionPill" class="connection-pill connecting">
+        <span></span><strong id="connectionText">Connecting to this PC</strong>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div>
+          <p class="eyebrow">READ-ONLY MONITOR</p>
+          <h1>The signal, <span>at a glance.</span></h1>
+          <p class="hero-copy">Live movement rules, audit filters, and coins currently being tracked by the Axiom bot running on this PC.</p>
+        </div>
+        <div class="monitor-status glass-card">
+          <div class="status-orb"><i class="fa-solid fa-wave-square"></i></div>
+          <div><span>MONITOR STATUS</span><strong id="monitorStatus">Checking…</strong></div>
+        </div>
+      </section>
+
+      <section id="offlineNotice" class="offline-notice" hidden>
+        <i class="fa-solid fa-laptop"></i>
+        <div>
+          <strong>Start Axiom Alerts on this PC</strong>
+          <p>This page is online, but its private backend is not connected. Open the desktop app and leave it running.</p>
+        </div>
+        <button id="retryButton" type="button"><i class="fa-solid fa-rotate-right"></i> Retry</button>
+      </section>
+
+      <section class="overview-grid">
+        <article class="movement-card glass-card">
+          <div class="card-heading">
+            <span class="section-icon purple"><i class="fa-solid fa-arrow-trend-up"></i></span>
+            <div><p>COIN MOVEMENT</p><h2>Movement trigger</h2></div>
+          </div>
+          <div class="movement-values">
+            <div><span>FROM</span><strong id="startCap">—</strong></div>
+            <i class="fa-solid fa-arrow-right-long"></i>
+            <div><span>TO</span><strong id="targetCap">—</strong></div>
+            <div class="window-value"><span>WITHIN</span><strong id="moveWindow">—</strong></div>
+          </div>
+          <div class="range-track">
+            <span id="rangeFill" class="range-fill"></span>
+            <span id="rangeStart" class="range-dot start"></span>
+            <span id="rangeEnd" class="range-dot end"></span>
+          </div>
+          <p id="movementSentence" class="card-note">Waiting for the local bot settings.</p>
+        </article>
+
+        <article class="audit-card glass-card">
+          <div class="card-heading">
+            <span class="section-icon green"><i class="fa-solid fa-filter"></i></span>
+            <div><p>AUDIT FILTERS</p><h2>Required before tracking</h2></div>
+          </div>
+          <div class="filter-grid">
+            <div><i class="fa-regular fa-clock"></i><span>Maximum age</span><strong id="maxAge">—</strong></div>
+            <div><i class="fa-solid fa-user-tie"></i><span>Pro traders</span><strong id="proTraders">—</strong></div>
+            <div><i class="fa-solid fa-chart-simple"></i><span>Market cap</span><strong id="minMarketCap">—</strong></div>
+            <div><i class="fa-solid fa-coins"></i><span>Global fees</span><strong id="globalFees">—</strong></div>
+            <div class="twitter-filter"><i class="fa-brands fa-x-twitter"></i><span>Twitter</span><strong id="twitterRequired">—</strong></div>
+          </div>
+        </article>
+      </section>
+
+      <section class="tracking-panel glass-card">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">ACTIVE WATCHLIST</p>
+            <h2>Coins being tracked</h2>
+          </div>
+          <span class="count-pill"><strong id="trackedCount">0</strong> active</span>
+        </div>
+        <div id="trackedCoins" class="tracked-coins">
+          <div class="empty-state"><i class="fa-solid fa-radar"></i><strong>No active movement yet</strong><span>Coins appear here after passing every audit filter and crossing the starting market cap.</span></div>
+        </div>
+      </section>
+
+      <section class="events-panel glass-card">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">ACTIVITY</p>
+            <h2>Live event stream</h2>
+          </div>
+          <span id="lastUpdated" class="updated-time">Waiting for connection</span>
+        </div>
+        <div id="eventStream" class="event-stream">
+          <div class="empty-event"><i class="fa-solid fa-signal"></i><span>Live monitor events will appear here.</span></div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <span><i class="fa-solid fa-shield-halved"></i> Read-only view · secrets never leave your PC</span>
+      <a href="https://axiom.trade/" target="_blank" rel="noreferrer">Open Axiom <i class="fa-solid fa-arrow-up-right-from-square"></i></a>
+    </footer>
+
+    <script src="app.js"></script>
+  </body>
+</html>

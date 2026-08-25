@@ -8,7 +8,7 @@ import subprocess
 import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 import webbrowser
 
 
@@ -19,6 +19,7 @@ RENDERER_DIR = APP_DIR / "renderer"
 FONTAWESOME_DIR = APP_DIR / "node_modules" / "@fortawesome" / "fontawesome-free"
 HOST = "127.0.0.1"
 PORT = 8765
+PUBLIC_ORIGINS = {"https://cartoondua.github.io", "http://127.0.0.1:8766"}
 
 SETTING_DEFAULTS = {
     "DISCORD_WEBHOOK_URL": "",
@@ -50,6 +51,8 @@ bot_process = None
 stopping = False
 events = []
 event_number = 0
+tracked_coins = {}
+monitor_status = {"state": "stopped", "label": "Stopped"}
 server = None
 lock = threading.Lock()
 
@@ -151,9 +154,34 @@ def save_settings(values):
 def emit(event_type, payload):
     global event_number
     with lock:
+        if event_type == "status":
+            monitor_status.update(payload)
         event_number += 1
         events.append({"id": event_number, "type": event_type, "payload": payload})
         del events[:-500]
+
+
+def public_state():
+    settings = read_settings()
+    with lock:
+        current_status = monitor_status.copy()
+        current_coins = list(tracked_coins.values())
+    return {
+        "status": current_status,
+        "movement": {
+            "startMarketCap": settings["START_MARKET_CAP"],
+            "targetMarketCap": settings["TARGET_MARKET_CAP"],
+            "windowSeconds": settings["MOVE_WINDOW_SECONDS"],
+        },
+        "audit": {
+            "maxAgeMinutes": settings["AUDIT_MAX_AGE_MINUTES"],
+            "minProTraders": settings["AUDIT_MIN_PRO_TRADERS"],
+            "minMarketCap": settings["AUDIT_MIN_MARKET_CAP"],
+            "minGlobalFeesSol": settings["AUDIT_MIN_GLOBAL_FEES_SOL"],
+            "requireTwitter": settings["AUDIT_REQUIRE_TWITTER"].lower() == "true",
+        },
+        "trackedCoins": current_coins,
+    }
 
 
 def update_discord_status(online):
@@ -220,7 +248,21 @@ def log_line(line):
 
     alert_match = re.search(r"ALERT_EVENT (\{.+\})$", message)
     if alert_match:
-        emit("alert", json.loads(alert_match.group(1)))
+        payload = json.loads(alert_match.group(1))
+        with lock:
+            tracked_coins.pop(payload["address"], None)
+        emit("alert", payload)
+        return
+
+    tracking_match = re.search(r"TRACKING_EVENT (\{.+\})$", message)
+    if tracking_match:
+        payload = json.loads(tracking_match.group(1))
+        with lock:
+            if payload["action"] == "remove":
+                tracked_coins.pop(payload["address"], None)
+            else:
+                tracked_coins[payload["address"]] = payload
+        emit("tracking", payload)
         return
 
     level = "info"
@@ -255,6 +297,7 @@ def wait_for_bot(process):
         bot_process = None
         expected = stopping
         stopping = False
+        tracked_coins.clear()
     emit(
         "status",
         {
@@ -273,6 +316,8 @@ def start_bot():
         return {"ok": False, "error": "Open Settings and add your Discord and Axiom credentials."}
 
     stopping = False
+    with lock:
+        tracked_coins.clear()
     emit("status", {"state": "starting", "label": "Connecting"})
     env = os.environ.copy()
     env.update({"AXIOM_ENV_FILE": str(ENV_FILE), "AXIOM_DATA_DIR": str(APP_DIR), "PYTHONUNBUFFERED": "1"})
@@ -295,6 +340,8 @@ def start_bot():
 def stop_bot():
     global stopping
     if not bot_process:
+        with lock:
+            tracked_coins.clear()
         emit("status", {"state": "stopped", "label": "Stopped"})
         update_discord_status(False)
         return
@@ -317,6 +364,20 @@ class AppHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def send_public_json(self, value):
+        body = json.dumps(value).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        origin = self.headers.get("Origin")
+        if origin in PUBLIC_ORIGINS:
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Access-Control-Allow-Private-Network", "true")
+            self.send_header("Vary", "Origin")
+        self.end_headers()
+        self.wfile.write(body)
+
     def send_file(self, file_path):
         content_types = {".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".woff2": "font/woff2"}
         body = file_path.read_bytes()
@@ -327,7 +388,20 @@ class AppHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
-        path = urlparse(self.path).path
+        parsed = urlparse(self.path)
+        path = parsed.path
+        if path == "/api/public/state":
+            self.send_public_json(public_state())
+            return
+        if path == "/api/public/events":
+            after = int(parse_qs(parsed.query).get("after", ["0"])[0])
+            with lock:
+                pending = [
+                    event for event in events
+                    if event["id"] > after and event["type"] in {"status", "tracking", "alert"}
+                ]
+            self.send_public_json(pending)
+            return
         if path == "/api/state":
             self.send_json({"running": bool(bot_process), "credentialsReady": credentials_ready()})
             return
@@ -352,6 +426,21 @@ class AppHandler(BaseHTTPRequestHandler):
             self.send_file(file_path)
         else:
             self.send_error(404)
+
+    def do_OPTIONS(self):
+        path = urlparse(self.path).path
+        origin = self.headers.get("Origin")
+        if path.startswith("/api/public/") and origin in PUBLIC_ORIGINS:
+            self.send_response(204)
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type")
+            self.send_header("Access-Control-Allow-Private-Network", "true")
+            self.send_header("Access-Control-Max-Age", "600")
+            self.send_header("Vary", "Origin")
+            self.end_headers()
+            return
+        self.send_error(403)
 
     def do_POST(self):
         global server
