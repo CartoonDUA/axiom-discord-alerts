@@ -31,10 +31,13 @@ When an alert fires, click the coin in Recent Activity or use **Open in Axiom** 
 
 ## Build the Windows application
 
+Copy `.env.signing.example` to `.env.signing`, then set `WIN_CSC_LINK` to your trusted `.pfx` certificate and `WIN_CSC_KEY_PASSWORD` to its password. The signing file is ignored by Git and must stay private.
+
 ```powershell
+Copy-Item .env.signing.example .env.signing
 npm run build
 ```
 
-The portable executable is created in `dist`. Keep `.env` beside the portable executable so the app can load your credentials.
+The build fails instead of producing an unsigned release when the certificate is missing or invalid. The signed portable executable is created in `dist`. Keep `.env` beside the portable executable so the app can load your credentials.
 
 The Axiom Python client used here is community-maintained because Axiom does not currently publish a supported public market-data API. The monitor subscribes to Axiom's current `new_pairs` stream and each pair's live `b-<pair address>` price room. Axiom can change this private WebSocket format without notice.

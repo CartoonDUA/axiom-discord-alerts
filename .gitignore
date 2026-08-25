@@ -1,4 +1,5 @@
 .env
+.env.signing
 .venv/
 __pycache__/
 alerted_coins.json

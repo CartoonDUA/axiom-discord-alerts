@@ -8,7 +8,7 @@
   "scripts": {
     "icon": "electron scripts/create-icon.js",
     "start": "electron .",
-    "build": "electron-builder --win portable"
+    "build": "node scripts/build.js"
   },
   "dependencies": {
     "@fortawesome/fontawesome-free": "^7.0.0"
@@ -20,6 +20,7 @@
   "build": {
     "appId": "com.cartoondua.axiomalerts",
     "productName": "Axiom Alerts",
+    "forceCodeSigning": true,
     "asar": true,
     "files": [
       "main.js",
