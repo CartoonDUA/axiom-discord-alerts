@@ -67,12 +67,21 @@ def number_value(data, *keys):
 def get_rug_analysis(address, coin):
     creator = first_value(coin, "creatorAddress", "creator_address", "creator")
     try:
-        response = requests.get(
-            f"https://api.rugcheck.xyz/v1/tokens/{address}/report",
-            timeout=20,
-        )
-        response.raise_for_status()
-        report = response.json()
+        for attempt in range(3):
+            response = requests.get(
+                f"https://api.rugcheck.xyz/v1/tokens/{address}/report",
+                timeout=20,
+            )
+            response.raise_for_status()
+            report = response.json()
+            report_ready = (
+                bool(report.get("markets"))
+                and report.get("totalMarketLiquidity") is not None
+                and bool(report.get("topHolders"))
+            )
+            if report_ready or attempt == 2:
+                break
+            time.sleep(1)
     except requests.RequestException as error:
         logging.warning("Rug analysis unavailable for %s: %s", address, error)
         return {
@@ -116,7 +125,8 @@ def get_rug_analysis(address, coin):
                 score += 0.5
             details.append(f"🟡 Deployer: {prior_count} prior launches; no rugged history flagged")
         else:
-            details.append("🟢 Deployer: no previous token launches reported")
+            score += 0.5
+            details.append("⚪ Deployer: fresh wallet; no history available to judge")
         deployer = (
             f"[{creator[:8]}…{creator[-4:]}](https://solscan.io/account/{creator}) · "
             f"{prior_count} prior launches"
@@ -265,6 +275,23 @@ def get_rug_analysis(address, coin):
     normalized = number_value(report, "score_normalised")
     if normalized is not None:
         score += min(2, normalized / 20)
+
+    missing_data = []
+    if not report.get("markets"):
+        missing_data.append("market")
+    if total_liquidity is None:
+        missing_data.append("liquidity")
+    if not report_holders and top_ten is None:
+        missing_data.append("holder")
+    if missing_data:
+        uncertainty_floor = 7.0 if len(missing_data) >= 2 else 5.0
+        score = max(score, uncertainty_floor)
+        details.insert(
+            0,
+            f"🔴 Data confidence: {', '.join(missing_data)} data not indexed yet; risk cannot be verified",
+        )
+    if low_liquidity_risk:
+        score = max(score, 7.0)
 
     rating = round(min(10, score), 1)
     important_risks = [
