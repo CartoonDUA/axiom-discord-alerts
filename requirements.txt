@@ -1,0 +1,3 @@
+axiomtradeapi==1.1.6
+python-dotenv==1.1.1
+requests==2.32.5
