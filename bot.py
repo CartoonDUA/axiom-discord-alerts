@@ -178,13 +178,14 @@ def get_rug_analysis(address, coin):
             else 0
         )
         if low_liquidity_risk:
-            liquidity_score = max(liquidity_score, 3.5)
+            liquidity_score = max(liquidity_score, 5.5)
         score += liquidity_score
         icon = "🔴" if liquidity_score >= 3 else "🟡" if liquidity_score else "🟢"
-        details.append(f"{icon} Liquidity depth: ${total_liquidity:,.2f}")
+        danger_note = " · danger-level warning" if low_liquidity_risk else ""
+        details.append(f"{icon} Liquidity depth: ${total_liquidity:,.2f}{danger_note}")
     elif low_liquidity_risk:
-        score += 3.5
-        details.append("🔴 Liquidity depth: dangerously low")
+        score += 5.5
+        details.append("🔴 Liquidity depth: danger-level low-liquidity warning")
 
     locked_values = [
         number_value(market.get("lp") or {}, "lpLockedPct")
