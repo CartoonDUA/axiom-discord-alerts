@@ -64,6 +64,20 @@ def number_value(data, *keys):
         return None
 
 
+def get_bubble_networks(address):
+    try:
+        response = requests.get(
+            f"https://api.rugcheck.xyz/v1/tokens/{address}/insiders/networks",
+            timeout=10,
+        )
+        response.raise_for_status()
+        networks = response.json()
+        return networks if isinstance(networks, list) else []
+    except requests.RequestException as error:
+        logging.warning("Bubble-map analysis unavailable for %s: %s", address, error)
+        return None
+
+
 def get_rug_analysis(address, coin):
     creator = first_value(coin, "creatorAddress", "creator_address", "creator")
     try:
@@ -100,6 +114,9 @@ def get_rug_analysis(address, coin):
     token = report.get("token") or {}
     metadata = report.get("tokenMeta") or {}
     risks = report.get("risks") or []
+    bubble_networks = report.get("insiderNetworks")
+    if bubble_networks is None:
+        bubble_networks = get_bubble_networks(address)
     risk_names = " ".join(str(risk.get("name", "")).lower() for risk in risks)
     creator = report.get("creator") or creator
     creator_tokens = report.get("creatorTokens") or []
@@ -253,24 +270,55 @@ def get_rug_analysis(address, coin):
         high_concentration = (report_top_wallet or 0) >= 10 or (top_ten or 0) >= 30 or (developer or 0) >= 5 or (insiders or 0) >= 10
         icon = "🔴" if high_concentration else "🟢"
         details.append(f"{icon} Wallets: {', '.join(concentration_parts)}")
-    elif report.get("graphInsidersDetected"):
-        score += 1.0
-        details.append("🔴 Wallets: connected insider network detected")
     else:
         details.append("⚪ Wallets: concentration data not reported")
 
     bundled = number_value(coin, "bundlePercentage", "bundle_percentage")
-    insider_graph = bool(report.get("graphInsidersDetected"))
     if bundled is not None:
         score += 2.0 if bundled >= 20 else 1.0 if bundled >= 10 else 0.5 if bundled >= 5 else 0
         icon = "🔴" if bundled >= 10 else "🟡" if bundled >= 5 else "🟢"
-        graph_note = " + insider links" if insider_graph else ""
-        details.append(f"{icon} Bundling: {bundled:.1f}%{graph_note}")
-    elif insider_graph:
-        score += 1.0
-        details.append("🔴 Bundling: linked insider wallets detected")
+        details.append(f"{icon} Bundling: {bundled:.1f}%")
     else:
         details.append("⚪ Bundling: Axiom did not report bundle data")
+
+    token_supply = number_value(token, "supply")
+    if bubble_networks:
+        bubble_rows = []
+        for network in bubble_networks:
+            amount = number_value(network, "totalAmount", "tokenAmount") or 0
+            percentage = amount / token_supply * 100 if token_supply else 0
+            wallets = int(number_value(network, "numActiveAccounts", "activeAccounts", "size") or 0)
+            bubble_rows.append((percentage, wallets, network.get("activityType") or network.get("type") or "linked"))
+        bubble_rows.sort(reverse=True)
+        largest_pct, largest_wallets, link_type = bubble_rows[0]
+        total_pct = min(100, sum(row[0] for row in bubble_rows))
+        bubble_score = (
+            7.0
+            if largest_pct >= 50
+            else 5.0
+            if largest_pct >= 25
+            else 3.5
+            if largest_pct >= 15
+            else 1.5
+            if largest_pct >= 5
+            else 0.5
+        )
+        if largest_wallets >= 10:
+            bubble_score += 1.0
+        score += bubble_score
+        icon = "🔴" if bubble_score >= 3 else "🟡"
+        details.append(
+            f"{icon} Bubble map: {len(bubble_rows)} linked cluster{'s' if len(bubble_rows) != 1 else ''}; "
+            f"largest {largest_wallets} wallets / {largest_pct:.1f}% supply via {link_type} "
+            f"({total_pct:.1f}% across clusters)"
+        )
+    elif report.get("graphInsidersDetected"):
+        score += 3.0
+        details.append(f"🔴 Bubble map: {report['graphInsidersDetected']} connected insider wallets detected")
+    elif bubble_networks == [] and report.get("graphInsidersDetected") is not None:
+        details.append("🟢 Bubble map: no connected holder clusters detected")
+    else:
+        details.append("⚪ Bubble map: network data unavailable or not indexed yet")
 
     normalized = number_value(report, "score_normalised")
     if normalized is not None:
