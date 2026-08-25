@@ -52,8 +52,135 @@ def save_alerted_coins(coins):
     STATE_FILE.write_text(json.dumps(sorted(coins), indent=2), encoding="utf-8")
 
 
+def number_value(data, *keys):
+    value = first_value(data, *keys)
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def get_rug_analysis(address, coin):
+    try:
+        response = requests.get(
+            f"https://api.rugcheck.xyz/v1/tokens/{address}/report",
+            timeout=20,
+        )
+        response.raise_for_status()
+        report = response.json()
+    except requests.RequestException as error:
+        logging.warning("Rug analysis unavailable for %s: %s", address, error)
+        return {
+            "rating": None,
+            "details": "⚪ Rug analysis was unavailable when this alert fired.",
+            "color": 0xF4C152,
+        }
+
+    token = report.get("token") or {}
+    metadata = report.get("tokenMeta") or {}
+    risks = report.get("risks") or []
+    risk_names = " ".join(str(risk.get("name", "")).lower() for risk in risks)
+    score = 0.0
+    details = []
+
+    mint_authority = report.get("mintAuthority") or token.get("mintAuthority")
+    if mint_authority:
+        score += 2.0
+        details.append("🔴 Minting: authority is still active")
+    else:
+        details.append("🟢 Minting: authority revoked")
+
+    freeze_authority = report.get("freezeAuthority") or token.get("freezeAuthority")
+    transfer_fee = report.get("transferFee") or {}
+    transfer_fee_value = (
+        number_value(transfer_fee, "pct", "feeBps", "basisPoints", "transferFeeBasisPoints")
+        if isinstance(transfer_fee, dict)
+        else None
+    )
+    transfer_risk = (transfer_fee_value or 0) > 0 or any(
+        word in risk_names for word in ("honeypot", "sell", "transfer fee", "transfer hook")
+    )
+    if freeze_authority or transfer_risk:
+        score += 1.5
+        reason = "freeze authority active" if freeze_authority else "transfer restrictions reported"
+        details.append(f"🔴 Sell controls: {reason}")
+    else:
+        details.append("🟢 Sell controls: no freeze or transfer restriction reported")
+
+    if metadata.get("mutable") or metadata.get("updateAuthority"):
+        score += 0.5
+        details.append("🟡 Ownership: metadata/admin authority remains")
+    else:
+        details.append("🟢 Ownership: metadata control revoked")
+
+    locked_values = [
+        number_value(market.get("lp") or {}, "lpLockedPct")
+        for market in report.get("markets") or []
+    ]
+    locked_values = [value for value in locked_values if value is not None]
+    locked_pct = max(locked_values) if locked_values else None
+    if locked_pct is None:
+        details.append("⚪ Liquidity: lock status not reported")
+    elif locked_pct < 50:
+        score += 2.0
+        details.append(f"🔴 Liquidity: only {locked_pct:.1f}% locked/burned")
+    elif locked_pct < 90:
+        score += 1.0
+        details.append(f"🟡 Liquidity: {locked_pct:.1f}% locked/burned")
+    else:
+        details.append(f"🟢 Liquidity: {locked_pct:.1f}% locked/burned")
+
+    top_ten = number_value(coin, "top10HoldersPercent", "top_10_holders_percent")
+    developer = number_value(coin, "developerHoldingPercent", "developer_holding_percent")
+    insiders = number_value(coin, "insiderPercentage", "insider_percentage")
+    concentration_parts = []
+    if top_ten is not None:
+        concentration_parts.append(f"top 10 {top_ten:.1f}%")
+        score += 2.0 if top_ten >= 50 else 1.0 if top_ten >= 30 else 0.5 if top_ten >= 20 else 0
+    if developer is not None:
+        concentration_parts.append(f"developer {developer:.1f}%")
+        score += 1.5 if developer >= 10 else 0.75 if developer >= 5 else 0
+    if insiders is not None:
+        concentration_parts.append(f"insiders {insiders:.1f}%")
+        score += 1.0 if insiders >= 20 else 0.5 if insiders >= 10 else 0
+    if concentration_parts:
+        high_concentration = (top_ten or 0) >= 30 or (developer or 0) >= 5 or (insiders or 0) >= 10
+        icon = "🔴" if high_concentration else "🟢"
+        details.append(f"{icon} Wallets: {', '.join(concentration_parts)}")
+    elif report.get("graphInsidersDetected"):
+        score += 1.0
+        details.append("🔴 Wallets: connected insider network detected")
+    else:
+        details.append("⚪ Wallets: concentration data not reported")
+
+    bundled = number_value(coin, "bundlePercentage", "bundle_percentage")
+    insider_graph = bool(report.get("graphInsidersDetected"))
+    if bundled is not None:
+        score += 2.0 if bundled >= 20 else 1.0 if bundled >= 10 else 0.5 if bundled >= 5 else 0
+        icon = "🔴" if bundled >= 10 else "🟡" if bundled >= 5 else "🟢"
+        graph_note = " + insider links" if insider_graph else ""
+        details.append(f"{icon} Bundling: {bundled:.1f}%{graph_note}")
+    elif insider_graph:
+        score += 1.0
+        details.append("🔴 Bundling: linked insider wallets detected")
+    else:
+        details.append("⚪ Bundling: Axiom did not report bundle data")
+
+    normalized = number_value(report, "score_normalised")
+    if normalized is not None:
+        score = max(score, normalized / 10)
+
+    rating = round(min(10, score), 1)
+    important_risks = [risk for risk in risks if risk.get("description")][:2]
+    for risk in important_risks:
+        details.append(f"• {risk['description']}")
+
+    color = 0xFF6B73 if rating >= 7 else 0xF4C152 if rating >= 4 else 0x62E6A7
+    return {"rating": rating, "details": "\n".join(details)[:1024], "color": color}
+
+
 def send_discord_alert(
-    webhook_url, coin, start_market_cap, target_market_cap, market_cap, elapsed
+    webhook_url, coin, start_market_cap, target_market_cap, market_cap, elapsed, rug
 ):
     address = first_value(coin, "tokenAddress", "token_address", "address", "mint")
     name = first_value(coin, "tokenName", "token_name", "name") or "Unknown coin"
@@ -66,7 +193,7 @@ def send_discord_alert(
             {
                 "title": f"{name} (${ticker}) hit ${target_market_cap:,.0f}",
                 "url": axiom_url,
-                "color": 0x62E6A7,
+                "color": rug["color"],
                 "description": (
                     f"Moved from **${start_market_cap:,.0f}** to "
                     f"**${market_cap:,.0f}** in **{elapsed:.1f} seconds**."
@@ -88,7 +215,18 @@ def send_discord_alert(
                         "inline": True,
                     },
                     {"name": "Coin address", "value": f"```{address}```"},
+                    {
+                        "name": (
+                            f"RUG RISK • {rug['rating']}/10"
+                            if rug["rating"] is not None
+                            else "RUG RISK • UNAVAILABLE"
+                        ),
+                        "value": rug["details"],
+                    },
                 ],
+                "footer": {
+                    "text": "Automated on-chain screening from RugCheck and Axiom data — not a guarantee."
+                },
             }
         ],
     }
@@ -163,6 +301,7 @@ async def run_bot():
         if market_cap < target_market_cap or elapsed > move_window_seconds:
             return
 
+        rug = await asyncio.to_thread(get_rug_analysis, address, coin)
         await asyncio.to_thread(
             send_discord_alert,
             webhook_url,
@@ -171,6 +310,7 @@ async def run_bot():
             target_market_cap,
             market_cap,
             elapsed,
+            rug,
         )
         alerted_coins.add(address)
         moves.pop(address, None)
@@ -188,6 +328,7 @@ async def run_bot():
                     or "?",
                     "marketCap": round(market_cap),
                     "elapsed": round(elapsed, 1),
+                    "rugRating": rug["rating"],
                 },
                 separators=(",", ":"),
             ),

@@ -31,6 +31,8 @@ Use **Start monitor** and **Stop monitor** inside the app. Closing the app also 
 
 When an alert fires, click the coin in Recent Activity or use **Open in Axiom** to open its trading page. Use **Copy address** to put the coin address on your clipboard. Discord alerts also link their title and **View coin** action to the same Axiom page.
 
+Discord alerts include an automated rug-risk rating out of 10 with evidence for mint and freeze authority, metadata control, liquidity locking, holder and developer concentration, insider wallets, and Axiom bundle percentage. The rating uses RugCheck and Axiom data as a screening signal, not a guarantee that a token is safe or fraudulent.
+
 ## Build the Windows application
 
 Copy `.env.signing.example` to `.env.signing`, then set `WIN_CSC_LINK` to your trusted `.pfx` certificate and `WIN_CSC_KEY_PASSWORD` to its password. The signing file is ignored by Git and must stay private.
