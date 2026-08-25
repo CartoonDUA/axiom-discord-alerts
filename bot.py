@@ -149,11 +149,41 @@ def get_rug_analysis(address, coin):
     else:
         details.append("🟢 Sell controls: no freeze or transfer restriction reported")
 
-    if metadata.get("mutable") or metadata.get("updateAuthority"):
+    update_authority = metadata.get("updateAuthority")
+    has_admin_control = metadata.get("mutable") and update_authority not in (
+        None,
+        "11111111111111111111111111111111",
+    )
+    if has_admin_control:
         score += 0.5
         details.append("🟡 Ownership: metadata/admin authority remains")
     else:
         details.append("🟢 Ownership: metadata control revoked")
+
+    total_liquidity = number_value(report, "totalMarketLiquidity")
+    low_liquidity_risk = any(
+        "low liquidity" in str(risk.get("name", "")).lower() for risk in risks
+    )
+    if total_liquidity is not None:
+        liquidity_score = (
+            4.0
+            if total_liquidity < 100
+            else 3.0
+            if total_liquidity < 1000
+            else 2.0
+            if total_liquidity < 5000
+            else 1.0
+            if total_liquidity < 10000
+            else 0
+        )
+        if low_liquidity_risk:
+            liquidity_score = max(liquidity_score, 3.5)
+        score += liquidity_score
+        icon = "🔴" if liquidity_score >= 3 else "🟡" if liquidity_score else "🟢"
+        details.append(f"{icon} Liquidity depth: ${total_liquidity:,.2f}")
+    elif low_liquidity_risk:
+        score += 3.5
+        details.append("🔴 Liquidity depth: dangerously low")
 
     locked_values = [
         number_value(market.get("lp") or {}, "lpLockedPct")
@@ -172,13 +202,35 @@ def get_rug_analysis(address, coin):
     else:
         details.append(f"🟢 Liquidity: {locked_pct:.1f}% locked/burned")
 
+    pool_accounts = {
+        market.get("liquidityA")
+        for market in report.get("markets") or []
+        if market.get("liquidityA")
+    }
+    report_holders = [
+        holder
+        for holder in report.get("topHolders") or []
+        if holder.get("address") not in pool_accounts
+    ]
+    report_top_wallet = max(
+        (number_value(holder, "pct") or 0 for holder in report_holders),
+        default=None,
+    )
+    report_top_ten = sum(
+        number_value(holder, "pct") or 0 for holder in report_holders[:10]
+    ) if report_holders else None
     top_ten = number_value(coin, "top10HoldersPercent", "top_10_holders_percent")
+    if top_ten is None:
+        top_ten = report_top_ten
     developer = number_value(coin, "developerHoldingPercent", "developer_holding_percent")
     insiders = number_value(coin, "insiderPercentage", "insider_percentage")
     concentration_parts = []
+    if report_top_wallet is not None:
+        concentration_parts.append(f"largest wallet {report_top_wallet:.1f}%")
+        score += 2.0 if report_top_wallet >= 20 else 1.5 if report_top_wallet >= 10 else 0.5 if report_top_wallet >= 5 else 0
     if top_ten is not None:
         concentration_parts.append(f"top 10 {top_ten:.1f}%")
-        score += 2.0 if top_ten >= 50 else 1.0 if top_ten >= 30 else 0.5 if top_ten >= 20 else 0
+        score += 2.0 if top_ten >= 50 else 1.5 if top_ten >= 30 else 1.0 if top_ten >= 20 else 0
     if developer is not None:
         concentration_parts.append(f"developer {developer:.1f}%")
         score += 1.5 if developer >= 10 else 0.75 if developer >= 5 else 0
@@ -186,7 +238,7 @@ def get_rug_analysis(address, coin):
         concentration_parts.append(f"insiders {insiders:.1f}%")
         score += 1.0 if insiders >= 20 else 0.5 if insiders >= 10 else 0
     if concentration_parts:
-        high_concentration = (top_ten or 0) >= 30 or (developer or 0) >= 5 or (insiders or 0) >= 10
+        high_concentration = (report_top_wallet or 0) >= 10 or (top_ten or 0) >= 30 or (developer or 0) >= 5 or (insiders or 0) >= 10
         icon = "🔴" if high_concentration else "🟢"
         details.append(f"{icon} Wallets: {', '.join(concentration_parts)}")
     elif report.get("graphInsidersDetected"):
@@ -210,7 +262,7 @@ def get_rug_analysis(address, coin):
 
     normalized = number_value(report, "score_normalised")
     if normalized is not None:
-        score = max(score, normalized / 10)
+        score += min(2, normalized / 20)
 
     rating = round(min(10, score), 1)
     important_risks = [
