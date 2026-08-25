@@ -19,6 +19,7 @@ PORT = 8765
 
 SETTING_DEFAULTS = {
     "DISCORD_WEBHOOK_URL": "",
+    "DISCORD_ALL_WEBHOOK_URL": "",
     "DISCORD_WEBHOOK_MIN_RATING": "4",
     "DISCORD_SECONDARY_WEBHOOK_URL": "",
     "DISCORD_SECONDARY_MIN_RATING": "2",
@@ -58,7 +59,8 @@ def read_settings():
 
 def credentials_ready():
     settings = read_settings()
-    return all(settings[name] for name in ("DISCORD_WEBHOOK_URL", "AXIOM_ACCESS_TOKEN", "AXIOM_REFRESH_TOKEN"))
+    has_webhook = settings["DISCORD_ALL_WEBHOOK_URL"] or settings["DISCORD_WEBHOOK_URL"]
+    return bool(has_webhook and settings["AXIOM_ACCESS_TOKEN"] and settings["AXIOM_REFRESH_TOKEN"])
 
 
 def save_settings(values):

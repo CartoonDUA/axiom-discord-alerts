@@ -362,7 +362,8 @@ async def run_bot():
     load_dotenv(env_file)
     DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-    webhook_url = os.environ["DISCORD_WEBHOOK_URL"]
+    webhook_url = os.getenv("DISCORD_WEBHOOK_URL", "").strip()
+    all_webhook_url = os.getenv("DISCORD_ALL_WEBHOOK_URL", "").strip()
     secondary_webhook_url = os.getenv("DISCORD_SECONDARY_WEBHOOK_URL", "").strip()
     webhook_routes = [
         (float(os.getenv("DISCORD_WEBHOOK_MIN_RATING", "4")), webhook_url),
@@ -429,8 +430,13 @@ async def run_bot():
             return
 
         rug = await asyncio.to_thread(get_rug_analysis, address, coin)
-        alert_webhook = choose_webhook(rug["rating"], webhook_routes)
-        if alert_webhook:
+        alert_webhooks = []
+        if all_webhook_url:
+            alert_webhooks.append(all_webhook_url)
+        risk_webhook = choose_webhook(rug["rating"], webhook_routes)
+        if risk_webhook and risk_webhook not in alert_webhooks:
+            alert_webhooks.append(risk_webhook)
+        for alert_webhook in alert_webhooks:
             await asyncio.to_thread(
                 send_discord_alert,
                 alert_webhook,
@@ -441,7 +447,7 @@ async def run_bot():
                 elapsed,
                 rug,
             )
-        else:
+        if not alert_webhooks:
             logging.info("No webhook route matched rug rating %s for %s", rug["rating"], address)
         alerted_coins.add(address)
         moves.pop(address, None)

@@ -9,6 +9,7 @@ let stopping = false;
 
 const settingDefaults = {
   DISCORD_WEBHOOK_URL: "",
+  DISCORD_ALL_WEBHOOK_URL: "",
   DISCORD_WEBHOOK_MIN_RATING: "4",
   DISCORD_SECONDARY_WEBHOOK_URL: "",
   DISCORD_SECONDARY_MIN_RATING: "2",
@@ -84,10 +85,8 @@ function writeSettings(settings) {
 
 function credentialsReady() {
   const settings = readSettings();
-
-  return ["DISCORD_WEBHOOK_URL", "AXIOM_ACCESS_TOKEN", "AXIOM_REFRESH_TOKEN"].every(
-    (name) => settings[name].length > 0,
-  );
+  const hasWebhook = settings.DISCORD_ALL_WEBHOOK_URL || settings.DISCORD_WEBHOOK_URL;
+  return Boolean(hasWebhook && settings.AXIOM_ACCESS_TOKEN && settings.AXIOM_REFRESH_TOKEN);
 }
 
 function saveSettings(values) {

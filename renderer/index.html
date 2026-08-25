@@ -177,11 +177,23 @@
                   <div class="section-icon small discord"><i class="fa-brands fa-discord"></i></div>
                   <div>
                     <h3>Alert routing</h3>
-                    <p>Send higher and lower rug-risk alerts to different Discord channels.</p>
+                    <p>Send every alert to one channel, with optional risk-based channels.</p>
                   </div>
                 </div>
 
                 <div class="route-grid">
+                  <div class="route-card all-alerts">
+                    <div class="route-title"><span>All alerts</span><i class="fa-solid fa-bell"></i></div>
+                    <p class="route-description">Every coin that completes your market-cap trigger goes here.</p>
+                    <label class="wide-field">
+                      <span>Webhook URL</span>
+                      <div class="secret-input">
+                        <input data-setting="DISCORD_ALL_WEBHOOK_URL" type="password" autocomplete="off" placeholder="Discord webhook…" />
+                        <button class="reveal-secret" type="button" aria-label="Show all-alerts webhook URL"><i class="fa-regular fa-eye"></i></button>
+                      </div>
+                    </label>
+                  </div>
+
                   <div class="route-card high-risk">
                     <div class="route-title"><span>Higher risk</span><i class="fa-solid fa-shield-halved"></i></div>
                     <label class="wide-field">
@@ -212,7 +224,7 @@
                     </label>
                   </div>
                 </div>
-                <p class="routing-note"><i class="fa-solid fa-circle-info"></i> The highest matching rating wins, so each alert goes to one webhook.</p>
+                <p class="routing-note"><i class="fa-solid fa-circle-info"></i> All alerts always receives the coin. A matching risk route can receive it too.</p>
               </section>
 
               <section class="settings-card">
