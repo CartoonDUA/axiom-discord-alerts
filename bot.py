@@ -3,8 +3,11 @@ import json
 import logging
 import os
 from pathlib import Path
+import re
 import time
 
+import discord
+from discord import app_commands
 import requests
 from axiomtradeapi import AxiomTradeClient
 from dotenv import load_dotenv
@@ -75,6 +78,8 @@ def get_rug_analysis(address, coin):
             "rating": None,
             "details": "⚪ Rug analysis was unavailable when this alert fired.",
             "color": 0xF4C152,
+            "name": first_value(coin, "tokenName", "token_name", "name") or "Unknown coin",
+            "ticker": first_value(coin, "tokenTicker", "token_ticker", "ticker", "symbol") or "?",
             "deployer": (
                 f"[{creator[:8]}…](https://solscan.io/account/{creator}) · history unavailable"
                 if creator
@@ -221,8 +226,69 @@ def get_rug_analysis(address, coin):
         "rating": rating,
         "details": "\n".join(details)[:1024],
         "color": color,
+        "name": first_value(metadata, "name") or first_value(coin, "tokenName", "token_name", "name") or "Unknown coin",
+        "ticker": first_value(metadata, "symbol") or first_value(coin, "tokenTicker", "token_ticker", "ticker", "symbol") or "?",
         "deployer": deployer,
     }
+
+
+def create_discord_client(guild_id):
+    client = discord.Client(intents=discord.Intents.none())
+    commands = app_commands.CommandTree(client)
+    synced = False
+
+    @commands.command(name="check", description="Check a Solana coin for rug-risk signals")
+    @app_commands.describe(ca="Solana coin address (CA)")
+    async def check(interaction: discord.Interaction, ca: str):
+        address = ca.strip()
+        if not re.fullmatch(r"[1-9A-HJ-NP-Za-km-z]{32,50}", address):
+            await interaction.response.send_message("That does not look like a valid Solana coin address.", ephemeral=True)
+            return
+
+        await interaction.response.defer(thinking=True)
+        rug = await asyncio.to_thread(get_rug_analysis, address, {})
+        rating = f"{rug['rating']}/10" if rug["rating"] is not None else "UNAVAILABLE"
+        axiom_url = f"https://axiom.trade/t/{address}"
+        embed = discord.Embed(
+            title=f"{rug['name']} (${rug['ticker']}) rug-risk report",
+            url=axiom_url,
+            color=rug["color"],
+            description=f"Automated on-chain screening for `{address}`.",
+        )
+        embed.add_field(name="Open in Axiom", value=f"[View coin]({axiom_url})", inline=False)
+        embed.add_field(name="Coin address", value=f"```{address}```", inline=False)
+        embed.add_field(name="Deployer trace", value=rug["deployer"], inline=False)
+        embed.add_field(name=f"RUG RISK • {rating}", value=rug["details"], inline=False)
+        embed.set_footer(text="Automated on-chain screening from RugCheck and Axiom data — not a guarantee.")
+        await interaction.followup.send(embed=embed)
+
+    @client.event
+    async def on_ready():
+        nonlocal synced
+        if not synced:
+            if guild_id:
+                server = discord.Object(id=int(guild_id))
+                commands.copy_global_to(guild=server)
+                await commands.sync(guild=server)
+            else:
+                await commands.sync()
+            synced = True
+        logging.info("Discord /check command ready as %s", client.user)
+
+    return client
+
+
+async def run_discord_commands(token, guild_id):
+    client = create_discord_client(guild_id)
+    try:
+        await client.start(token)
+    except asyncio.CancelledError:
+        raise
+    except Exception as error:
+        logging.error("Discord slash commands stopped: %s", error)
+    finally:
+        if not client.is_closed():
+            await client.close()
 
 
 def send_discord_alert(
@@ -465,6 +531,18 @@ async def run_bot():
             await new_pairs.close()
 
 
+async def main():
+    env_file = os.getenv("AXIOM_ENV_FILE", APP_DIR / ".env")
+    load_dotenv(env_file)
+    token = os.getenv("DISCORD_BOT_TOKEN", "").strip()
+    guild_id = os.getenv("DISCORD_GUILD_ID", "").strip()
+    if token:
+        await asyncio.gather(run_bot(), run_discord_commands(token, guild_id))
+    else:
+        logging.info("Discord /check is disabled until a bot token is added in Settings")
+        await run_bot()
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    asyncio.run(run_bot())
+    asyncio.run(main())

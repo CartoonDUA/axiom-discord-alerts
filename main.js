@@ -9,6 +9,8 @@ let stopping = false;
 
 const settingDefaults = {
   DISCORD_WEBHOOK_URL: "",
+  DISCORD_BOT_TOKEN: "",
+  DISCORD_GUILD_ID: "",
   AXIOM_ACCESS_TOKEN: "",
   AXIOM_REFRESH_TOKEN: "",
   CF_CLEARANCE: "",
