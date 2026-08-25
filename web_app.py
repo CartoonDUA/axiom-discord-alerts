@@ -1,7 +1,9 @@
 import json
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 import re
+import requests
 import subprocess
 import sys
 import threading
@@ -12,6 +14,7 @@ import webbrowser
 
 APP_DIR = Path(__file__).resolve().parent
 ENV_FILE = APP_DIR / ".env"
+STATUS_FILE = APP_DIR / "discord_status.json"
 RENDERER_DIR = APP_DIR / "renderer"
 FONTAWESOME_DIR = APP_DIR / "node_modules" / "@fortawesome" / "fontawesome-free"
 HOST = "127.0.0.1"
@@ -29,6 +32,7 @@ SETTING_DEFAULTS = {
     "DISCORD_SECONDARY_MIN_RATING": "2",
     "DISCORD_BOT_TOKEN": "",
     "DISCORD_GUILD_ID": "",
+    "DISCORD_STATUS_CHANNEL_ID": "",
     "AXIOM_ACCESS_TOKEN": "",
     "AXIOM_REFRESH_TOKEN": "",
     "CF_CLEARANCE": "",
@@ -152,6 +156,63 @@ def emit(event_type, payload):
         del events[:-500]
 
 
+def update_discord_status(online):
+    settings = read_settings()
+    token = settings["DISCORD_BOT_TOKEN"]
+    channel_id = settings["DISCORD_STATUS_CHANNEL_ID"]
+    if not token or not channel_id:
+        return
+
+    label = "ONLINE" if online else "OFFLINE"
+    payload = {
+        "embeds": [
+            {
+                "title": f"Axiom Alerts • {label}",
+                "description": (
+                    "The market-cap monitor and Discord commands are connected."
+                    if online
+                    else "The market-cap monitor is stopped."
+                ),
+                "color": 0x62E6A7 if online else 0xFF6B73,
+                "fields": [{"name": "Status", "value": f"● {label}", "inline": True}],
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "footer": {"text": "Axiom Discord Alerts"},
+            }
+        ]
+    }
+    headers = {"Authorization": f"Bot {token}"}
+    saved = {}
+    if STATUS_FILE.exists():
+        saved = json.loads(STATUS_FILE.read_text(encoding="utf-8"))
+
+    response = None
+    if saved.get("channelId") == channel_id and saved.get("messageId"):
+        response = requests.patch(
+            f"https://discord.com/api/v10/channels/{channel_id}/messages/{saved['messageId']}",
+            headers=headers,
+            json=payload,
+            timeout=15,
+        )
+    if response is None or response.status_code == 404:
+        response = requests.post(
+            f"https://discord.com/api/v10/channels/{channel_id}/messages",
+            headers=headers,
+            json=payload,
+            timeout=15,
+        )
+        response.raise_for_status()
+        STATUS_FILE.write_text(
+            json.dumps({"channelId": channel_id, "messageId": response.json()["id"]}),
+            encoding="utf-8",
+        )
+    else:
+        response.raise_for_status()
+
+
+def queue_discord_status(online):
+    threading.Thread(target=update_discord_status, args=(online,), daemon=True).start()
+
+
 def log_line(line):
     message = line.strip()
     if not message:
@@ -170,6 +231,7 @@ def log_line(line):
     if re.search(r"Watching Axiom", message, re.IGNORECASE):
         level = "success"
         emit("status", {"state": "running", "label": "Connected"})
+        queue_discord_status(True)
     if re.search(r"Alerted .+: \$", message, re.IGNORECASE):
         level = "alert"
 
@@ -200,6 +262,7 @@ def wait_for_bot(process):
             "label": "Stopped" if expected else f"Stopped unexpectedly ({code})",
         },
     )
+    queue_discord_status(False)
 
 
 def start_bot():
@@ -233,9 +296,11 @@ def stop_bot():
     global stopping
     if not bot_process:
         emit("status", {"state": "stopped", "label": "Stopped"})
+        update_discord_status(False)
         return
     stopping = True
     emit("status", {"state": "stopping", "label": "Stopping"})
+    update_discord_status(False)
     bot_process.terminate()
 
 

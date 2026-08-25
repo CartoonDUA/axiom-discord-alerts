@@ -19,6 +19,7 @@ const settingDefaults = {
   DISCORD_SECONDARY_MIN_RATING: "2",
   DISCORD_BOT_TOKEN: "",
   DISCORD_GUILD_ID: "",
+  DISCORD_STATUS_CHANNEL_ID: "",
   AXIOM_ACCESS_TOKEN: "",
   AXIOM_REFRESH_TOKEN: "",
   CF_CLEARANCE: "",
@@ -166,6 +167,52 @@ function emit(channel, payload) {
   }
 }
 
+async function updateDiscordStatus(online) {
+  const settings = readSettings();
+  if (!settings.DISCORD_BOT_TOKEN || !settings.DISCORD_STATUS_CHANNEL_ID) return;
+
+  const paths = runtimePaths();
+  const statusFile = path.join(paths.data, "discord_status.json");
+  const label = online ? "ONLINE" : "OFFLINE";
+  const payload = {
+    embeds: [{
+      title: `Axiom Alerts • ${label}`,
+      description: online
+        ? "The market-cap monitor and Discord commands are connected."
+        : "The market-cap monitor is stopped.",
+      color: online ? 0x62e6a7 : 0xff6b73,
+      fields: [{ name: "Status", value: `● ${label}`, inline: true }],
+      timestamp: new Date().toISOString(),
+      footer: { text: "Axiom Discord Alerts" },
+    }],
+  };
+  const headers = {
+    Authorization: `Bot ${settings.DISCORD_BOT_TOKEN}`,
+    "Content-Type": "application/json",
+  };
+  const saved = fs.existsSync(statusFile) ? JSON.parse(fs.readFileSync(statusFile, "utf8")) : {};
+  let response;
+  if (saved.channelId === settings.DISCORD_STATUS_CHANNEL_ID && saved.messageId) {
+    response = await fetch(
+      `https://discord.com/api/v10/channels/${settings.DISCORD_STATUS_CHANNEL_ID}/messages/${saved.messageId}`,
+      { method: "PATCH", headers, body: JSON.stringify(payload) },
+    );
+  }
+  if (!response || response.status === 404) {
+    response = await fetch(
+      `https://discord.com/api/v10/channels/${settings.DISCORD_STATUS_CHANNEL_ID}/messages`,
+      { method: "POST", headers, body: JSON.stringify(payload) },
+    );
+    if (response.ok) {
+      const message = await response.json();
+      fs.writeFileSync(statusFile, JSON.stringify({
+        channelId: settings.DISCORD_STATUS_CHANNEL_ID,
+        messageId: message.id,
+      }));
+    }
+  }
+}
+
 function logLine(line) {
   const message = line.trim();
   if (!message) return;
@@ -182,6 +229,7 @@ function logLine(line) {
   if (/Watching Axiom/i.test(message)) {
     level = "success";
     emit("bot-status", { state: "running", label: "Connected" });
+    updateDiscordStatus(true);
   }
   if (/Alerted .+: \$/i.test(message)) {
     level = "alert";
@@ -248,6 +296,7 @@ function startBot() {
       state: expected ? "stopped" : "error",
       label: expected ? "Stopped" : `Stopped unexpectedly (${code ?? "unknown"})`,
     });
+    updateDiscordStatus(false);
   });
 
   return { ok: true };
@@ -256,11 +305,13 @@ function startBot() {
 function stopBot() {
   if (!botProcess) {
     emit("bot-status", { state: "stopped", label: "Stopped" });
+    updateDiscordStatus(false);
     return;
   }
 
   stopping = true;
   emit("bot-status", { state: "stopping", label: "Stopping" });
+  updateDiscordStatus(false);
   botProcess.kill();
 }
 
