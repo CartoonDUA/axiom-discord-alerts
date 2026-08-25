@@ -498,11 +498,12 @@ def send_green_candle_alert(webhook_url, coin, gain_percent):
     response.raise_for_status()
 
 
-def send_momentum_alert(webhook_url, coin, gain_percent, elapsed):
+def send_momentum_alert(webhook_url, coin, gain_percent, elapsed, rug):
     address = first_value(coin, "tokenAddress", "token_address", "address", "mint")
     ticker = (first_value(coin, "tokenTicker", "token_ticker", "ticker", "symbol") or "?").lstrip("$")
     percentage = f"{gain_percent:g}"
     axiom_url = f"https://axiom.trade/t/{address}"
+    rating = f"{rug['rating']}/10" if rug["rating"] is not None else "UNAVAILABLE"
     payload = {
         "username": "Premium Momentum",
         "embeds": [
@@ -510,7 +511,32 @@ def send_momentum_alert(webhook_url, coin, gain_percent, elapsed):
                 "title": f"+{percentage}% · ${ticker} · RISING FAST",
                 "url": axiom_url,
                 "description": f"**Premium caught ${ticker} starting to move** · +{percentage}% in {elapsed:.1f}s · 🟣 Solana",
-                "color": 0x62E6A7,
+                "color": rug["color"],
+                "fields": [
+                    {
+                        "name": "Open in Axiom",
+                        "value": f"[View coin]({axiom_url})",
+                        "inline": True,
+                    },
+                    {
+                        "name": "Coin address",
+                        "value": f"```{address}```",
+                        "inline": False,
+                    },
+                    {
+                        "name": "Deployer trace",
+                        "value": rug["deployer"],
+                        "inline": False,
+                    },
+                    {
+                        "name": f"RUG RISK • {rating}",
+                        "value": rug["details"],
+                        "inline": False,
+                    },
+                ],
+                "footer": {
+                    "text": "Automated on-chain screening from RugCheck and Axiom data — not a guarantee."
+                },
             }
         ],
     }
@@ -656,6 +682,9 @@ async def run_bot():
                 "momentum_sent": False,
                 "green_candle_sent": False,
                 "last_update": now,
+                "rug_task": asyncio.create_task(
+                    asyncio.to_thread(get_rug_analysis, address, coin)
+                ),
             }
             ticker = first_value(coin, "tokenTicker", "token_ticker") or address[:8]
             logging.info(
@@ -685,12 +714,14 @@ async def run_bot():
             and elapsed <= early_momentum_window
             and market_cap >= momentum_target
         ):
+            rug = await move["rug_task"]
             await asyncio.to_thread(
                 send_momentum_alert,
                 green_candle_webhook_url,
                 coin,
                 early_momentum_percent,
                 elapsed,
+                rug,
             )
             move["momentum_sent"] = True
             logging.info("Momentum alerted %s at +%g%% in %.1fs", address, early_momentum_percent, elapsed)
