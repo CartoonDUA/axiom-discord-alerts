@@ -22,6 +22,8 @@ SETTING_DEFAULTS = {
     "DISCORD_ALL_WEBHOOK_URL": "",
     "DISCORD_GREEN_CANDLE_WEBHOOK_URL": "",
     "GREEN_CANDLE_PERCENT": "100",
+    "EARLY_MOMENTUM_PERCENT": "10",
+    "EARLY_MOMENTUM_WINDOW_SECONDS": "15",
     "DISCORD_WEBHOOK_MIN_RATING": "4",
     "DISCORD_SECONDARY_WEBHOOK_URL": "",
     "DISCORD_SECONDARY_MIN_RATING": "2",
@@ -89,6 +91,8 @@ def save_settings(values):
     audit_market_cap = float(settings["AUDIT_MIN_MARKET_CAP"])
     audit_fees = float(settings["AUDIT_MIN_GLOBAL_FEES_SOL"])
     green_candle_percent = float(settings["GREEN_CANDLE_PERCENT"])
+    early_momentum_percent = float(settings["EARLY_MOMENTUM_PERCENT"])
+    early_momentum_window = float(settings["EARLY_MOMENTUM_WINDOW_SECONDS"])
     if start <= 0:
         return {"ok": False, "error": "Starting market cap must be above zero."}
     if target <= start:
@@ -101,6 +105,8 @@ def save_settings(values):
         return {"ok": False, "error": "Audit filter values cannot be negative."}
     if green_candle_percent <= 0:
         return {"ok": False, "error": "Green Candle percentage must be above zero."}
+    if early_momentum_percent <= 0 or early_momentum_window <= 0:
+        return {"ok": False, "error": "Early momentum values must be above zero."}
 
     settings["START_MARKET_CAP"] = str(int(start) if start.is_integer() else start)
     settings["TARGET_MARKET_CAP"] = str(int(target) if target.is_integer() else target)
@@ -116,6 +122,8 @@ def save_settings(values):
         settings[name] = str(int(value) if value.is_integer() else value)
     settings["AUDIT_REQUIRE_TWITTER"] = "true" if settings["AUDIT_REQUIRE_TWITTER"].lower() == "true" else "false"
     settings["GREEN_CANDLE_PERCENT"] = str(int(green_candle_percent) if green_candle_percent.is_integer() else green_candle_percent)
+    settings["EARLY_MOMENTUM_PERCENT"] = str(int(early_momentum_percent) if early_momentum_percent.is_integer() else early_momentum_percent)
+    settings["EARLY_MOMENTUM_WINDOW_SECONDS"] = str(int(early_momentum_window) if early_momentum_window.is_integer() else early_momentum_window)
 
     current = ENV_FILE.read_text(encoding="utf-8") if ENV_FILE.exists() else ""
     found = set()

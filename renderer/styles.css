@@ -432,6 +432,7 @@ footer i { margin-right: 6px; color: #4b9f78; }
 .route-card.all-alerts .route-title i { color: #62e6a7; }
 .route-card.green-candle .route-title i { color: #62e6a7; }
 .route-description { margin: 5px 0 0; color: #747b88; font-size: 9px; }
+.momentum-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .routing-note { margin: 12px 2px 0; color: #686f7c; font-size: 9px; }
 .routing-note i { margin-right: 5px; color: #7e8796; }
 .trigger-fields label, .wide-field { display: flex; flex-direction: column; gap: 7px; }
@@ -512,7 +513,7 @@ footer i { margin-right: 6px; color: #4b9f78; }
 }
 
 @media (max-width: 700px) {
-  .route-grid, .two-fields { grid-template-columns: 1fr; }
+  .route-grid, .two-fields, .momentum-fields { grid-template-columns: 1fr; }
   .trigger-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .trigger-fields label:last-child { grid-column: 1 / -1; }
 }
