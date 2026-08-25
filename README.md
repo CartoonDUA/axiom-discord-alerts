@@ -4,6 +4,8 @@ This Windows desktop app watches Axiom's live new-pair and price feeds. It start
 
 The monitor only runs while the app is open and started. Press **Stop monitor** or close the window to end it.
 
+On Windows PCs that block unsigned desktop applications, double-click `Start Axiom Alerts.cmd`. It opens the same interface as a local browser app at `http://127.0.0.1:8765` without exposing it to the network. Use the red close button to stop the monitor and local server.
+
 Use **Settings** inside the app to edit the starting cap, target cap, movement window, Discord webhook, Axiom tokens, and optional Cloudflare clearance value. The settings are stored only in the local `.env` file.
 
 ## Setup

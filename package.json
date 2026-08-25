@@ -8,6 +8,7 @@
   "scripts": {
     "icon": "electron scripts/create-icon.js",
     "start": "electron .",
+    "web": ".venv\\Scripts\\python.exe web_app.py",
     "build": "node scripts/build.js"
   },
   "dependencies": {
