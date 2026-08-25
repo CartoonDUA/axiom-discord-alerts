@@ -10,8 +10,6 @@ from axiomtradeapi import AxiomTradeClient
 from dotenv import load_dotenv
 
 
-MIN_MARKET_CAP = 5_000
-MAX_MARKET_CAP = 20_000
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = Path(os.getenv("AXIOM_DATA_DIR", APP_DIR))
 STATE_FILE = DATA_DIR / "alerted_coins.json"
@@ -44,28 +42,6 @@ def get_sol_price():
     return sol_price
 
 
-def market_cap_usd(coin, current_sol_price=None):
-    is_sol = False
-    value = first_value(
-        coin,
-        "marketCapUsd",
-        "market_cap_usd",
-        "marketCapUSD",
-        "usdMarketCap",
-    )
-    if value is None:
-        value = first_value(coin, "marketCapSol", "market_cap_sol")
-        if value is None or current_sol_price is None:
-            return None
-        is_sol = True
-
-    try:
-        cap = float(str(value).replace("$", "").replace(",", ""))
-        return cap * current_sol_price if is_sol else cap
-    except ValueError:
-        return None
-
-
 def load_alerted_coins():
     if not STATE_FILE.exists():
         return set()
@@ -76,28 +52,34 @@ def save_alerted_coins(coins):
     STATE_FILE.write_text(json.dumps(sorted(coins), indent=2), encoding="utf-8")
 
 
-def send_discord_alert(webhook_url, coin, market_cap):
+def send_discord_alert(
+    webhook_url, coin, start_market_cap, target_market_cap, market_cap, elapsed
+):
     address = first_value(coin, "tokenAddress", "token_address", "address", "mint")
-    name = first_value(coin, "tokenName", "name") or "Unknown coin"
-    ticker = first_value(coin, "tokenTicker", "ticker", "symbol") or "?"
+    name = first_value(coin, "tokenName", "token_name", "name") or "Unknown coin"
+    ticker = first_value(coin, "tokenTicker", "token_ticker", "ticker", "symbol") or "?"
     axiom_url = f"https://axiom.trade/t/{address}"
 
     payload = {
         "username": "Axiom Market Cap Alerts",
         "embeds": [
             {
-                "title": f"{name} (${ticker}) crossed $5K",
+                "title": f"{name} (${ticker}) hit ${target_market_cap:,.0f}",
                 "url": axiom_url,
-                "color": 0x22C55E,
+                "color": 0x62E6A7,
+                "description": (
+                    f"Moved from **${start_market_cap:,.0f}** to "
+                    f"**${market_cap:,.0f}** in **{elapsed:.1f} seconds**."
+                ),
                 "fields": [
                     {
-                        "name": "Market cap",
-                        "value": f"${market_cap:,.0f}",
+                        "name": "Trigger",
+                        "value": f"${start_market_cap:,.0f} → ${target_market_cap:,.0f}",
                         "inline": True,
                     },
                     {
-                        "name": "Range",
-                        "value": "$5K - $20K",
+                        "name": "Time",
+                        "value": f"{elapsed:.1f}s",
                         "inline": True,
                     },
                     {"name": "Token address", "value": f"`{address}`"},
@@ -114,50 +96,163 @@ async def run_bot():
     env_file = os.getenv("AXIOM_ENV_FILE", APP_DIR / ".env")
     load_dotenv(env_file)
     DATA_DIR.mkdir(parents=True, exist_ok=True)
+
     webhook_url = os.environ["DISCORD_WEBHOOK_URL"]
     access_token = os.environ["AXIOM_ACCESS_TOKEN"]
     refresh_token = os.environ["AXIOM_REFRESH_TOKEN"]
+    start_market_cap = float(os.getenv("START_MARKET_CAP", "5000"))
+    target_market_cap = float(os.getenv("TARGET_MARKET_CAP", "20000"))
+    move_window_seconds = float(os.getenv("MOVE_WINDOW_SECONDS", "40"))
+
     alerted_coins = load_alerted_coins()
+    coins_by_pair = {}
+    moves = {}
+    price_feed_ready = False
     client = AxiomTradeClient(
         auth_token=access_token,
         refresh_token=refresh_token,
         use_saved_tokens=False,
     )
 
-    async def check_coins(coins):
-        for coin in coins:
-            address = first_value(
-                coin, "tokenAddress", "token_address", "address", "mint"
+    async def check_price(pair_address, price_sol):
+        nonlocal price_feed_ready
+
+        coin = coins_by_pair.get(pair_address)
+        if not coin or sol_price is None:
+            return
+
+        address = first_value(coin, "tokenAddress", "token_address", "address", "mint")
+        if not address or address in alerted_coins:
+            return
+
+        try:
+            market_cap = float(price_sol) * float(coin["supply"]) * sol_price
+        except (KeyError, TypeError, ValueError):
+            return
+
+        if not price_feed_ready:
+            price_feed_ready = True
+            logging.info("Live Axiom market-cap updates are flowing")
+
+        now = time.monotonic()
+        move = moves.get(address)
+
+        if market_cap < start_market_cap:
+            moves.pop(address, None)
+            return
+
+        if move is None:
+            if market_cap >= target_market_cap:
+                return
+            moves[address] = {"started_at": now, "started_cap": market_cap}
+            ticker = first_value(coin, "tokenTicker", "token_ticker") or address[:8]
+            logging.info(
+                "Tracking %s from $%.0f toward $%.0f",
+                ticker,
+                market_cap,
+                target_market_cap,
             )
-            cap = market_cap_usd(coin)
-            if cap is None and first_value(coin, "marketCapSol", "market_cap_sol"):
-                current_sol_price = await asyncio.to_thread(get_sol_price)
-                cap = market_cap_usd(coin, current_sol_price)
+            return
 
-            if not address or cap is None:
-                continue
-            if address in alerted_coins or not MIN_MARKET_CAP <= cap <= MAX_MARKET_CAP:
-                continue
+        elapsed = now - move["started_at"]
+        if market_cap < target_market_cap or elapsed > move_window_seconds:
+            return
 
-            await asyncio.to_thread(send_discord_alert, webhook_url, coin, cap)
-            alerted_coins.add(address)
-            save_alerted_coins(alerted_coins)
-            logging.info("Alerted %s at $%.0f", address, cap)
+        await asyncio.to_thread(
+            send_discord_alert,
+            webhook_url,
+            coin,
+            start_market_cap,
+            target_market_cap,
+            market_cap,
+            elapsed,
+        )
+        alerted_coins.add(address)
+        moves.pop(address, None)
+        save_alerted_coins(alerted_coins)
+        logging.info(
+            "Alerted %s: $%.0f to $%.0f in %.1f seconds",
+            address,
+            move["started_cap"],
+            market_cap,
+            elapsed,
+        )
+
+    async def refresh_sol_price():
+        while True:
+            try:
+                await asyncio.to_thread(get_sol_price)
+            except Exception as error:
+                logging.warning("Could not refresh SOL price: %s", error)
+            await asyncio.sleep(30)
+
+    await asyncio.to_thread(get_sol_price)
 
     while True:
-        try:
-            websocket = client.get_websocket_client()
-            subscribed = await websocket.subscribe_new_tokens(check_coins)
-            if not subscribed:
-                raise ConnectionError("Axiom WebSocket subscription failed")
+        new_pairs = client.get_websocket_client()
+        prices = client.get_websocket_client()
 
-            logging.info("Watching Axiom for coins between $5K and $20K")
-            await websocket.start()
+        async def price_message(raw):
+            try:
+                message = json.loads(raw)
+                room = message.get("room", "")
+                if room.startswith("b-") and message.get("content") is not None:
+                    await check_price(room[2:], message["content"])
+            except json.JSONDecodeError:
+                return
+
+        prices._dispatch = price_message
+
+        async def subscribe_coin(coins):
+            for coin in coins:
+                pair_address = first_value(coin, "pairAddress", "pair_address")
+                address = first_value(coin, "tokenAddress", "token_address")
+                if not pair_address or not address or pair_address in coins_by_pair:
+                    continue
+
+                coins_by_pair[pair_address] = coin
+                await prices._send(
+                    json.dumps({"action": "join", "room": f"b-{pair_address}"})
+                )
+
+        tasks = []
+        try:
+            if not await prices.connect():
+                raise ConnectionError("Axiom price WebSocket connection failed")
+
+            for pair_address in coins_by_pair:
+                await prices._send(
+                    json.dumps({"action": "join", "room": f"b-{pair_address}"})
+                )
+
+            if not await new_pairs.subscribe_new_tokens(subscribe_coin):
+                raise ConnectionError("Axiom new-pairs subscription failed")
+
+            logging.info(
+                "Watching Axiom for $%.0f to $%.0f moves within %.0f seconds",
+                start_market_cap,
+                target_market_cap,
+                move_window_seconds,
+            )
+            tasks = [
+                asyncio.create_task(prices.start()),
+                asyncio.create_task(new_pairs.start()),
+                asyncio.create_task(refresh_sol_price()),
+            ]
+            await asyncio.wait(tasks[:2], return_when=asyncio.FIRST_COMPLETED)
+            raise ConnectionError("Axiom WebSocket connection closed")
         except asyncio.CancelledError:
             raise
         except Exception:
             logging.exception("Connection lost; reconnecting in 5 seconds")
             await asyncio.sleep(5)
+        finally:
+            for task in tasks:
+                task.cancel()
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
+            await prices.close()
+            await new_pairs.close()
 
 
 if __name__ == "__main__":

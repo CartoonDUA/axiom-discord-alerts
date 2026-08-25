@@ -1,13 +1,15 @@
 # Axiom Alerts desktop app
 
-This Windows desktop app watches Axiom's `new_pairs` WebSocket feed and sends one Discord alert per coin when its USD market cap is first observed between $5,000 and $20,000. When Axiom reports market cap in SOL, the bot uses CoinGecko's current SOL/USD price for conversion.
+This Windows desktop app watches Axiom's live new-pair and price feeds. It starts a timer when a coin reaches the starting market cap, then sends one Discord alert if that coin reaches the target market cap before the movement window expires. The defaults are $5,000 to $20,000 within 40 seconds.
 
 The monitor only runs while the app is open and started. Press **Stop monitor** or close the window to end it.
 
+Use **Settings** inside the app to edit the starting cap, target cap, movement window, Discord webhook, Axiom tokens, and optional Cloudflare clearance value. The settings are stored only in the local `.env` file.
+
 ## Setup
 
-1. Rotate the Discord webhook that was shared in chat. Copy `.env.example` to `.env` and put the new webhook URL in it.
-2. While signed in to Axiom, open your browser's developer tools, go to **Application**, then **Cookies**, then `https://axiom.trade`. Copy the values of `auth-access-token` and `auth-refresh-token` into `.env`.
+1. Copy `.env.example` to `.env`, or open **Settings** in the desktop app and enter the values there.
+2. While signed in to Axiom, open your browser's developer tools, go to **Application**, then **Cookies**, then `https://axiom.trade`. Copy the values of `auth-access-token` and `auth-refresh-token` into the matching settings fields.
 3. Install the Python and desktop dependencies:
 
 ```powershell
@@ -23,7 +25,7 @@ npm install
 npm start
 ```
 
-Use **Start monitor** and **Stop monitor** inside the app. Closing the app also stops the Python monitor process.
+Use **Start monitor** and **Stop monitor** inside the app. Closing the app also stops the Python monitor process. Stop the monitor before saving configuration changes.
 
 ## Build the Windows application
 
@@ -33,4 +35,4 @@ npm run build
 
 The portable executable is created in `dist`. Keep `.env` beside the portable executable so the app can load your credentials.
 
-The Axiom Python client used here is community-maintained because Axiom does not currently publish a supported public market-data API. Axiom can change its private WebSocket format without notice.
+The Axiom Python client used here is community-maintained because Axiom does not currently publish a supported public market-data API. The monitor subscribes to Axiom's current `new_pairs` stream and each pair's live `b-<pair address>` price room. Axiom can change this private WebSocket format without notice.

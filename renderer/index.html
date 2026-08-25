@@ -33,6 +33,9 @@
         </div>
 
         <div class="hero-actions">
+          <button id="settingsButton" class="ghost-button">
+            <i class="fa-solid fa-sliders"></i> Settings
+          </button>
           <button id="openAxiom" class="ghost-button">
             Open Axiom <i class="fa-solid fa-arrow-up-right-from-square"></i>
           </button>
@@ -48,22 +51,22 @@
           <div class="section-icon"><i class="fa-solid fa-wave-square"></i></div>
           <div>
             <p class="panel-label">MONITOR</p>
-            <h2>New coin discovery</h2>
-            <p>Watching Axiom's live feed for coins entering your target window.</p>
+            <h2>Rapid market-cap moves</h2>
+            <p id="movementDescription">Alert when a coin moves from $5K to $20K within 40 seconds.</p>
           </div>
         </div>
 
         <div class="range-card">
           <div class="range-labels">
-            <span>Trigger range</span>
-            <strong>$5K — $20K</strong>
+            <span>Movement trigger</span>
+            <strong id="rangeSummary">$5K → $20K · 40s</strong>
           </div>
           <div class="range-track">
-            <span class="range-fill"></span>
-            <span class="range-point start"></span>
-            <span class="range-point end"></span>
+            <span id="rangeFill" class="range-fill"></span>
+            <span id="rangeStart" class="range-point start"></span>
+            <span id="rangeEnd" class="range-point end"></span>
           </div>
-          <div class="range-bounds"><span>$0</span><span>$25K+</span></div>
+          <div class="range-bounds"><span>$0</span><span id="rangeMax">$25K+</span></div>
         </div>
 
         <div class="power-controls">
@@ -128,6 +131,107 @@
         <span>Closing this window stops the monitor</span>
       </footer>
     </main>
+
+    <div id="settingsModal" class="modal-backdrop" hidden>
+      <section class="settings-modal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+        <header class="modal-header">
+          <div>
+            <p class="panel-label">LOCAL CONFIGURATION</p>
+            <h2 id="settingsTitle">Monitor settings</h2>
+          </div>
+          <button id="closeSettings" class="icon-button" type="button" aria-label="Close settings">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </header>
+
+        <form id="settingsForm">
+          <div class="settings-scroll">
+            <div class="settings-section-heading">
+              <div class="section-icon small"><i class="fa-solid fa-arrow-trend-up"></i></div>
+              <div>
+                <h3>Movement trigger</h3>
+                <p>The timer starts when Axiom first reports the coin at or above your starting cap.</p>
+              </div>
+            </div>
+
+            <div class="trigger-fields">
+              <label>
+                <span>Starting market cap</span>
+                <div class="input-prefix"><i class="fa-solid fa-dollar-sign"></i><input data-setting="START_MARKET_CAP" type="number" min="1" step="1" required /></div>
+              </label>
+              <label>
+                <span>Target market cap</span>
+                <div class="input-prefix"><i class="fa-solid fa-bullseye"></i><input data-setting="TARGET_MARKET_CAP" type="number" min="1" step="1" required /></div>
+              </label>
+              <label>
+                <span>Maximum time</span>
+                <div class="input-prefix"><i class="fa-regular fa-clock"></i><input data-setting="MOVE_WINDOW_SECONDS" type="number" min="1" step="1" required /><em>sec</em></div>
+              </label>
+            </div>
+
+            <div class="settings-divider"></div>
+
+            <div class="settings-section-heading">
+              <div class="section-icon small discord"><i class="fa-brands fa-discord"></i></div>
+              <div>
+                <h3>Discord</h3>
+                <p>The webhook receives a rich alert only after the full move completes in time.</p>
+              </div>
+            </div>
+
+            <label class="wide-field">
+              <span>Webhook URL</span>
+              <div class="secret-input">
+                <input data-setting="DISCORD_WEBHOOK_URL" type="password" autocomplete="off" placeholder="https://discord.com/api/webhooks/…" />
+                <button class="reveal-secret" type="button" aria-label="Show webhook URL"><i class="fa-regular fa-eye"></i></button>
+              </div>
+            </label>
+
+            <div class="settings-divider"></div>
+
+            <div class="settings-section-heading">
+              <div class="section-icon small"><i class="fa-solid fa-key"></i></div>
+              <div>
+                <h3>Axiom session</h3>
+                <p>These values stay in the local .env file beside the application.</p>
+              </div>
+            </div>
+
+            <label class="wide-field">
+              <span>Access token</span>
+              <div class="secret-input">
+                <input data-setting="AXIOM_ACCESS_TOKEN" type="password" autocomplete="off" />
+                <button class="reveal-secret" type="button" aria-label="Show access token"><i class="fa-regular fa-eye"></i></button>
+              </div>
+            </label>
+
+            <label class="wide-field">
+              <span>Refresh token</span>
+              <div class="secret-input">
+                <input data-setting="AXIOM_REFRESH_TOKEN" type="password" autocomplete="off" />
+                <button class="reveal-secret" type="button" aria-label="Show refresh token"><i class="fa-regular fa-eye"></i></button>
+              </div>
+            </label>
+
+            <label class="wide-field">
+              <span>Cloudflare clearance <small>Optional</small></span>
+              <div class="secret-input">
+                <input data-setting="CF_CLEARANCE" type="password" autocomplete="off" />
+                <button class="reveal-secret" type="button" aria-label="Show Cloudflare clearance"><i class="fa-regular fa-eye"></i></button>
+              </div>
+            </label>
+          </div>
+
+          <div class="modal-footer">
+            <p id="settingsMessage">Stop the monitor before saving changes.</p>
+            <div>
+              <button id="cancelSettings" class="secondary-button" type="button">Cancel</button>
+              <button class="save-button" type="submit"><i class="fa-solid fa-check"></i> Save settings</button>
+            </div>
+          </div>
+        </form>
+      </section>
+    </div>
 
     <script src="app.js"></script>
   </body>

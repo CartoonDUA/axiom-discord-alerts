@@ -6,6 +6,10 @@ const uptime = document.getElementById("uptime");
 const alertCount = document.getElementById("alertCount");
 const credentialStatus = document.getElementById("credentialStatus");
 const activityList = document.getElementById("activityList");
+const settingsModal = document.getElementById("settingsModal");
+const settingsForm = document.getElementById("settingsForm");
+const settingsMessage = document.getElementById("settingsMessage");
+const settingInputs = [...document.querySelectorAll("[data-setting]")];
 
 let startedAt = null;
 let timer = null;
@@ -47,6 +51,55 @@ function updateUptime() {
   uptime.textContent = `${hours}:${minutes}:${remaining}`;
 }
 
+function formatCap(value) {
+  const amount = Number(value);
+  if (amount >= 1_000_000) return `$${Number((amount / 1_000_000).toFixed(1))}M`;
+  if (amount >= 1_000) return `$${Number((amount / 1_000).toFixed(1))}K`;
+  return `$${amount.toLocaleString()}`;
+}
+
+function showSettingsSummary(settings) {
+  const start = Number(settings.START_MARKET_CAP || 5000);
+  const target = Number(settings.TARGET_MARKET_CAP || 20000);
+  const seconds = Number(settings.MOVE_WINDOW_SECONDS || 40);
+  const rangeMax = target * 1.25;
+  const startPosition = Math.max(4, Math.min(92, (start / rangeMax) * 100));
+  const endPosition = Math.max(startPosition + 3, Math.min(96, (target / rangeMax) * 100));
+
+  document.getElementById("rangeSummary").textContent = `${formatCap(start)} → ${formatCap(target)} · ${seconds}s`;
+  document.getElementById("movementDescription").textContent =
+    `Alert when a coin moves from ${formatCap(start)} to ${formatCap(target)} within ${seconds} seconds.`;
+  document.getElementById("rangeMax").textContent = `${formatCap(rangeMax)}+`;
+  document.getElementById("rangeStart").style.left = `${startPosition}%`;
+  document.getElementById("rangeEnd").style.left = `${endPosition}%`;
+  document.getElementById("rangeFill").style.left = `${startPosition}%`;
+  document.getElementById("rangeFill").style.right = `${100 - endPosition}%`;
+}
+
+function showCredentialStatus(ready) {
+  credentialStatus.textContent = ready ? "Credentials ready" : "Setup required";
+  credentialStatus.style.color = ready ? "#62e6a7" : "#ff8d94";
+}
+
+async function openSettings() {
+  const settings = await window.axiom.getSettings();
+  for (const input of settingInputs) {
+    input.value = settings[input.dataset.setting] || "";
+    if (input.type === "text" && input.closest(".secret-input")) input.type = "password";
+  }
+  document.querySelectorAll(".reveal-secret i").forEach((icon) => {
+    icon.className = "fa-regular fa-eye";
+  });
+  settingsMessage.className = "";
+  settingsMessage.textContent = "Stop the monitor before saving changes.";
+  settingsModal.hidden = false;
+  settingInputs[0].focus();
+}
+
+function closeSettings() {
+  settingsModal.hidden = true;
+}
+
 function addLog(entry) {
   document.getElementById("emptyState")?.remove();
   const row = document.createElement("div");
@@ -81,6 +134,44 @@ stopButton.addEventListener("click", () => window.axiom.stop());
 document.getElementById("closeWindow").addEventListener("click", () => window.axiom.close());
 document.getElementById("minimizeWindow").addEventListener("click", () => window.axiom.minimize());
 document.getElementById("openAxiom").addEventListener("click", () => window.axiom.openAxiom());
+document.getElementById("settingsButton").addEventListener("click", openSettings);
+document.getElementById("closeSettings").addEventListener("click", closeSettings);
+document.getElementById("cancelSettings").addEventListener("click", closeSettings);
+settingsModal.addEventListener("click", (event) => {
+  if (event.target === settingsModal) closeSettings();
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !settingsModal.hidden) closeSettings();
+});
+
+document.querySelectorAll(".reveal-secret").forEach((button) => {
+  button.addEventListener("click", () => {
+    const input = button.previousElementSibling;
+    const visible = input.type === "text";
+    input.type = visible ? "password" : "text";
+    button.querySelector("i").className = `fa-regular ${visible ? "fa-eye" : "fa-eye-slash"}`;
+  });
+});
+
+settingsForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const settings = Object.fromEntries(
+    settingInputs.map((input) => [input.dataset.setting, input.value]),
+  );
+  const result = await window.axiom.saveSettings(settings);
+
+  if (!result.ok) {
+    settingsMessage.className = "error";
+    settingsMessage.textContent = result.error;
+    return;
+  }
+
+  settingsMessage.className = "success";
+  settingsMessage.textContent = "Saved locally. Your next monitor session will use these settings.";
+  showSettingsSummary(result.settings);
+  showCredentialStatus(result.credentialsReady);
+  addLog({ level: "success", message: "Settings saved locally", time: "Now" });
+});
 document.getElementById("clearActivity").addEventListener("click", () => {
   activityList.replaceChildren();
   const empty = document.createElement("div");
@@ -97,8 +188,8 @@ window.axiom.onAlert(() => {
   alertCount.textContent = String(alerts);
 });
 
-window.axiom.state().then((state) => {
-  credentialStatus.textContent = state.credentialsReady ? "Credentials ready" : "Setup required";
-  credentialStatus.style.color = state.credentialsReady ? "#62e6a7" : "#ff8d94";
+Promise.all([window.axiom.state(), window.axiom.getSettings()]).then(([state, settings]) => {
+  showCredentialStatus(state.credentialsReady);
+  showSettingsSummary(settings);
   setStatus(state.running ? "running" : "stopped", state.running ? "Connected" : "Stopped");
 });

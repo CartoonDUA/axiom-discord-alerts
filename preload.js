@@ -4,6 +4,8 @@ contextBridge.exposeInMainWorld("axiom", {
   start: () => ipcRenderer.invoke("bot:start"),
   stop: () => ipcRenderer.invoke("bot:stop"),
   state: () => ipcRenderer.invoke("bot:state"),
+  getSettings: () => ipcRenderer.invoke("settings:get"),
+  saveSettings: (settings) => ipcRenderer.invoke("settings:save", settings),
   minimize: () => ipcRenderer.send("window:minimize"),
   close: () => ipcRenderer.send("window:close"),
   openAxiom: () => ipcRenderer.send("open:url", "https://axiom.trade/"),
