@@ -21,6 +21,11 @@ const settingDefaults = {
   START_MARKET_CAP: "5000",
   TARGET_MARKET_CAP: "20000",
   MOVE_WINDOW_SECONDS: "40",
+  AUDIT_MAX_AGE_MINUTES: "15",
+  AUDIT_MIN_PRO_TRADERS: "2",
+  AUDIT_MIN_MARKET_CAP: "5000",
+  AUDIT_MIN_GLOBAL_FEES_SOL: "0.2",
+  AUDIT_REQUIRE_TWITTER: "true",
 };
 
 function localDataDir() {
@@ -105,6 +110,12 @@ function saveSettings(values) {
   const seconds = Number(settings.MOVE_WINDOW_SECONDS);
   const primaryRating = Number(settings.DISCORD_WEBHOOK_MIN_RATING);
   const secondaryRating = Number(settings.DISCORD_SECONDARY_MIN_RATING);
+  const auditValues = [
+    "AUDIT_MAX_AGE_MINUTES",
+    "AUDIT_MIN_PRO_TRADERS",
+    "AUDIT_MIN_MARKET_CAP",
+    "AUDIT_MIN_GLOBAL_FEES_SOL",
+  ].map((name) => Number(settings[name]));
   if (!Number.isFinite(start) || start <= 0) {
     return { ok: false, error: "Starting market cap must be above zero." };
   }
@@ -119,6 +130,9 @@ function saveSettings(values) {
     !Number.isFinite(secondaryRating) || secondaryRating < 0 || secondaryRating > 10
   ) {
     return { ok: false, error: "Webhook rug ratings must be between 0 and 10." };
+  }
+  if (auditValues.some((value) => !Number.isFinite(value) || value < 0)) {
+    return { ok: false, error: "Audit filter values cannot be negative." };
   }
 
   settings.START_MARKET_CAP = String(start);

@@ -394,6 +394,7 @@ footer i { margin-right: 6px; color: #4b9f78; }
 .settings-section-heading p { margin: 4px 0 0; color: var(--muted); font-size: 10px; line-height: 1.45; }
 .section-icon.small { flex-basis: 36px; width: 36px; height: 36px; border-radius: 11px; font-size: 12px; }
 .section-icon.small.discord { color: #a99bff; background: rgba(88, 101, 242, 0.12); }
+.section-icon.small.audit { color: #62e6a7; background: rgba(98, 230, 167, 0.1); }
 
 .settings-stack { display: grid; gap: 14px; }
 .settings-card {
@@ -404,6 +405,20 @@ footer i { margin-right: 6px; color: #4b9f78; }
 }
 
 .trigger-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.8fr); gap: 10px; }
+.audit-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.audit-fields label { display: flex; flex-direction: column; gap: 7px; }
+.audit-fields label > span { color: #9ba1ad; font-size: 10px; font-weight: 600; }
+.toggle-field { position: relative; display: flex; align-items: center; justify-content: space-between; margin-top: 14px; padding: 12px; border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 12px; background: rgba(5, 7, 11, 0.28); cursor: pointer; }
+.toggle-field > span { display: flex; align-items: center; gap: 10px; }
+.toggle-field > span > i { color: #d9dce2; font-size: 13px; }
+.toggle-field strong, .toggle-field small { display: block; }
+.toggle-field strong { color: #d9dce2; font-size: 10px; }
+.toggle-field small { margin-top: 3px; color: #6f7683; font-size: 9px; }
+.toggle-field input { position: absolute; opacity: 0; pointer-events: none; }
+.toggle-control { position: relative; width: 34px; height: 20px; border-radius: 20px; background: #343944; transition: background 160ms ease; }
+.toggle-control::after { content: ""; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: #fff; transition: transform 160ms ease; }
+.toggle-field input:checked + .toggle-control { background: #41d995; }
+.toggle-field input:checked + .toggle-control::after { transform: translateX(14px); }
 .two-fields { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 0.65fr); gap: 10px; }
 .route-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .route-card { min-width: 0; padding: 14px; border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 14px; background: rgba(5, 7, 11, 0.28); }

@@ -31,6 +31,11 @@ SETTING_DEFAULTS = {
     "START_MARKET_CAP": "5000",
     "TARGET_MARKET_CAP": "20000",
     "MOVE_WINDOW_SECONDS": "40",
+    "AUDIT_MAX_AGE_MINUTES": "15",
+    "AUDIT_MIN_PRO_TRADERS": "2",
+    "AUDIT_MIN_MARKET_CAP": "5000",
+    "AUDIT_MIN_GLOBAL_FEES_SOL": "0.2",
+    "AUDIT_REQUIRE_TWITTER": "true",
 }
 
 bot_process = None
@@ -77,6 +82,10 @@ def save_settings(values):
     seconds = float(settings["MOVE_WINDOW_SECONDS"])
     primary_rating = float(settings["DISCORD_WEBHOOK_MIN_RATING"])
     secondary_rating = float(settings["DISCORD_SECONDARY_MIN_RATING"])
+    audit_age = float(settings["AUDIT_MAX_AGE_MINUTES"])
+    audit_pro_traders = float(settings["AUDIT_MIN_PRO_TRADERS"])
+    audit_market_cap = float(settings["AUDIT_MIN_MARKET_CAP"])
+    audit_fees = float(settings["AUDIT_MIN_GLOBAL_FEES_SOL"])
     if start <= 0:
         return {"ok": False, "error": "Starting market cap must be above zero."}
     if target <= start:
@@ -85,12 +94,22 @@ def save_settings(values):
         return {"ok": False, "error": "Movement window must be above zero seconds."}
     if not 0 <= primary_rating <= 10 or not 0 <= secondary_rating <= 10:
         return {"ok": False, "error": "Webhook rug ratings must be between 0 and 10."}
+    if min(audit_age, audit_pro_traders, audit_market_cap, audit_fees) < 0:
+        return {"ok": False, "error": "Audit filter values cannot be negative."}
 
     settings["START_MARKET_CAP"] = str(int(start) if start.is_integer() else start)
     settings["TARGET_MARKET_CAP"] = str(int(target) if target.is_integer() else target)
     settings["MOVE_WINDOW_SECONDS"] = str(int(seconds) if seconds.is_integer() else seconds)
     settings["DISCORD_WEBHOOK_MIN_RATING"] = str(int(primary_rating) if primary_rating.is_integer() else primary_rating)
     settings["DISCORD_SECONDARY_MIN_RATING"] = str(int(secondary_rating) if secondary_rating.is_integer() else secondary_rating)
+    for name, value in (
+        ("AUDIT_MAX_AGE_MINUTES", audit_age),
+        ("AUDIT_MIN_PRO_TRADERS", audit_pro_traders),
+        ("AUDIT_MIN_MARKET_CAP", audit_market_cap),
+        ("AUDIT_MIN_GLOBAL_FEES_SOL", audit_fees),
+    ):
+        settings[name] = str(int(value) if value.is_integer() else value)
+    settings["AUDIT_REQUIRE_TWITTER"] = "true" if settings["AUDIT_REQUIRE_TWITTER"].lower() == "true" else "false"
 
     current = ENV_FILE.read_text(encoding="utf-8") if ENV_FILE.exists() else ""
     found = set()

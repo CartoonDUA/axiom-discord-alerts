@@ -84,7 +84,8 @@ function showCredentialStatus(ready) {
 async function openSettings() {
   const settings = await window.axiom.getSettings();
   for (const input of settingInputs) {
-    input.value = settings[input.dataset.setting] || "";
+    if (input.type === "checkbox") input.checked = settings[input.dataset.setting] === "true";
+    else input.value = settings[input.dataset.setting] || "";
     if (input.type === "text" && input.closest(".secret-input")) input.type = "password";
   }
   document.querySelectorAll(".reveal-secret i").forEach((icon) => {
@@ -214,7 +215,7 @@ document.querySelectorAll(".reveal-secret").forEach((button) => {
 settingsForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const settings = Object.fromEntries(
-    settingInputs.map((input) => [input.dataset.setting, input.value]),
+    settingInputs.map((input) => [input.dataset.setting, input.type === "checkbox" ? String(input.checked) : input.value]),
   );
   const result = await window.axiom.saveSettings(settings);
 

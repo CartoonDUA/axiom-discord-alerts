@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime, timezone
 import json
 import logging
 import os
@@ -409,6 +410,34 @@ def choose_webhook(rating, routes):
     return None
 
 
+def passes_audit(coin, market_cap, settings):
+    created_at = first_value(coin, "created_at", "createdAt", "pairCreatedAt", "open_trading")
+    if not created_at:
+        return False
+    try:
+        created = datetime.fromisoformat(str(created_at).replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    if created.tzinfo is None:
+        created = created.replace(tzinfo=timezone.utc)
+    age_minutes = (datetime.now(timezone.utc) - created).total_seconds() / 60
+    extra = coin.get("extra") if isinstance(coin.get("extra"), dict) else {}
+    pro_traders = number_value(coin, "pro_traders", "proTraders", "pro_trader_count", "proTraderCount")
+    if pro_traders is None:
+        pro_traders = number_value(extra, "pro_traders", "proTraders", "pro_trader_count", "proTraderCount") or 0
+    global_fees = number_value(coin, "global_fees_paid", "globalFeesPaid", "global_fees_paid_sol", "globalFeesPaidSol")
+    if global_fees is None:
+        global_fees = number_value(extra, "global_fees_paid", "globalFeesPaid", "global_fees_paid_sol", "globalFeesPaidSol") or 0
+    twitter = first_value(coin, "twitter", "twitterUrl", "twitter_url")
+    return (
+        age_minutes <= settings["max_age"]
+        and pro_traders >= settings["min_pro_traders"]
+        and market_cap >= settings["min_market_cap"]
+        and global_fees >= settings["min_global_fees"]
+        and (not settings["require_twitter"] or bool(twitter))
+    )
+
+
 async def run_bot():
     env_file = os.getenv("AXIOM_ENV_FILE", APP_DIR / ".env")
     load_dotenv(env_file)
@@ -426,6 +455,13 @@ async def run_bot():
     start_market_cap = float(os.getenv("START_MARKET_CAP", "5000"))
     target_market_cap = float(os.getenv("TARGET_MARKET_CAP", "20000"))
     move_window_seconds = float(os.getenv("MOVE_WINDOW_SECONDS", "40"))
+    audit_settings = {
+        "max_age": float(os.getenv("AUDIT_MAX_AGE_MINUTES", "15")),
+        "min_pro_traders": float(os.getenv("AUDIT_MIN_PRO_TRADERS", "2")),
+        "min_market_cap": float(os.getenv("AUDIT_MIN_MARKET_CAP", "5000")),
+        "min_global_fees": float(os.getenv("AUDIT_MIN_GLOBAL_FEES_SOL", "0.2")),
+        "require_twitter": os.getenv("AUDIT_REQUIRE_TWITTER", "true").lower() == "true",
+    }
 
     alerted_coins = load_alerted_coins()
     coins_by_pair = {}
@@ -451,6 +487,10 @@ async def run_bot():
         try:
             market_cap = float(price_sol) * float(coin["supply"]) * sol_price
         except (KeyError, TypeError, ValueError):
+            return
+
+        if not passes_audit(coin, market_cap, audit_settings):
+            moves.pop(address, None)
             return
 
         if not price_feed_ready:
@@ -559,7 +599,11 @@ async def run_bot():
             for coin in coins:
                 pair_address = first_value(coin, "pairAddress", "pair_address")
                 address = first_value(coin, "tokenAddress", "token_address")
-                if not pair_address or not address or pair_address in coins_by_pair:
+                if not pair_address or not address:
+                    continue
+
+                if pair_address in coins_by_pair:
+                    coins_by_pair[pair_address].update(coin)
                     continue
 
                 coins_by_pair[pair_address] = coin
@@ -581,7 +625,7 @@ async def run_bot():
                 raise ConnectionError("Axiom new-pairs subscription failed")
 
             logging.info(
-                "Watching Axiom for $%.0f to $%.0f moves within %.0f seconds",
+                "Watching Axiom audit-passing coins for $%.0f to $%.0f moves within %.0f seconds",
                 start_market_cap,
                 target_market_cap,
                 move_window_seconds,
