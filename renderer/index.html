@@ -229,6 +229,22 @@
                     </label>
                   </div>
 
+                  <div class="route-card green-candle">
+                    <div class="route-title"><span>Green Candle</span><i class="fa-solid fa-arrow-trend-up"></i></div>
+                    <p class="route-description">Sends a short premium embed when a tracked coin reaches this gain.</p>
+                    <label class="wide-field">
+                      <span>Webhook URL</span>
+                      <div class="secret-input">
+                        <input data-setting="DISCORD_GREEN_CANDLE_WEBHOOK_URL" type="password" autocomplete="off" placeholder="Discord webhook…" />
+                        <button class="reveal-secret" type="button" aria-label="Show Green Candle webhook URL"><i class="fa-regular fa-eye"></i></button>
+                      </div>
+                    </label>
+                    <label class="wide-field">
+                      <span>Gain from tracked market cap</span>
+                      <div class="input-prefix"><i class="fa-solid fa-percent"></i><input data-setting="GREEN_CANDLE_PERCENT" type="number" min="1" step="1" required /><em>gain</em></div>
+                    </label>
+                  </div>
+
                   <div class="route-card high-risk">
                     <div class="route-title"><span>Higher risk</span><i class="fa-solid fa-shield-halved"></i></div>
                     <label class="wide-field">

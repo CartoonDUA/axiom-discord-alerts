@@ -10,6 +10,8 @@ let stopping = false;
 const settingDefaults = {
   DISCORD_WEBHOOK_URL: "",
   DISCORD_ALL_WEBHOOK_URL: "",
+  DISCORD_GREEN_CANDLE_WEBHOOK_URL: "",
+  GREEN_CANDLE_PERCENT: "100",
   DISCORD_WEBHOOK_MIN_RATING: "4",
   DISCORD_SECONDARY_WEBHOOK_URL: "",
   DISCORD_SECONDARY_MIN_RATING: "2",
@@ -116,6 +118,7 @@ function saveSettings(values) {
     "AUDIT_MIN_MARKET_CAP",
     "AUDIT_MIN_GLOBAL_FEES_SOL",
   ].map((name) => Number(settings[name]));
+  const greenCandlePercent = Number(settings.GREEN_CANDLE_PERCENT);
   if (!Number.isFinite(start) || start <= 0) {
     return { ok: false, error: "Starting market cap must be above zero." };
   }
@@ -133,6 +136,9 @@ function saveSettings(values) {
   }
   if (auditValues.some((value) => !Number.isFinite(value) || value < 0)) {
     return { ok: false, error: "Audit filter values cannot be negative." };
+  }
+  if (!Number.isFinite(greenCandlePercent) || greenCandlePercent <= 0) {
+    return { ok: false, error: "Green Candle percentage must be above zero." };
   }
 
   settings.START_MARKET_CAP = String(start);

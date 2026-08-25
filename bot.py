@@ -401,6 +401,27 @@ def send_discord_alert(
     response.raise_for_status()
 
 
+def send_green_candle_alert(webhook_url, coin, gain_percent):
+    address = first_value(coin, "tokenAddress", "token_address", "address", "mint")
+    ticker = first_value(coin, "tokenTicker", "token_ticker", "ticker", "symbol") or "?"
+    ticker = ticker.lstrip("$")
+    percentage = f"{gain_percent:g}"
+    axiom_url = f"https://axiom.trade/t/{address}"
+    payload = {
+        "username": "Premium Green Candle",
+        "embeds": [
+            {
+                "title": f"+{percentage}% · ${ticker} · GREEN CANDLE",
+                "url": axiom_url,
+                "description": f"**Premium just caught ${ticker} hitting +{percentage}%** · 🟣 Solana",
+                "color": 0x62E6A7,
+            }
+        ],
+    }
+    response = requests.post(webhook_url, json=payload, timeout=15)
+    response.raise_for_status()
+
+
 def choose_webhook(rating, routes):
     if rating is None:
         return None
@@ -445,6 +466,8 @@ async def run_bot():
 
     webhook_url = os.getenv("DISCORD_WEBHOOK_URL", "").strip()
     all_webhook_url = os.getenv("DISCORD_ALL_WEBHOOK_URL", "").strip()
+    green_candle_webhook_url = os.getenv("DISCORD_GREEN_CANDLE_WEBHOOK_URL", "").strip()
+    green_candle_percent = float(os.getenv("GREEN_CANDLE_PERCENT", "100"))
     secondary_webhook_url = os.getenv("DISCORD_SECONDARY_WEBHOOK_URL", "").strip()
     webhook_routes = [
         (float(os.getenv("DISCORD_WEBHOOK_MIN_RATING", "4")), webhook_url),
@@ -507,7 +530,7 @@ async def run_bot():
         if move is None:
             if market_cap >= target_market_cap:
                 return
-            moves[address] = {"started_at": now, "started_cap": market_cap}
+            moves[address] = {"started_at": now, "started_cap": market_cap, "green_candle_sent": False}
             ticker = first_value(coin, "tokenTicker", "token_ticker") or address[:8]
             logging.info(
                 "Tracking %s from $%.0f toward $%.0f",
@@ -518,7 +541,26 @@ async def run_bot():
             return
 
         elapsed = now - move["started_at"]
-        if market_cap < target_market_cap or elapsed > move_window_seconds:
+        if elapsed > move_window_seconds:
+            moves.pop(address, None)
+            return
+
+        green_candle_target = move["started_cap"] * (1 + green_candle_percent / 100)
+        if (
+            green_candle_webhook_url
+            and not move["green_candle_sent"]
+            and market_cap >= green_candle_target
+        ):
+            await asyncio.to_thread(
+                send_green_candle_alert,
+                green_candle_webhook_url,
+                coin,
+                green_candle_percent,
+            )
+            move["green_candle_sent"] = True
+            logging.info("Green Candle alerted %s at +%g%%", address, green_candle_percent)
+
+        if market_cap < target_market_cap:
             return
 
         rug = await asyncio.to_thread(get_rug_analysis, address, coin)

@@ -425,10 +425,12 @@ footer i { margin-right: 6px; color: #4b9f78; }
 .route-card.high-risk { border-color: rgba(255, 107, 115, 0.16); }
 .route-card.lower-risk { border-color: rgba(244, 193, 82, 0.14); }
 .route-card.all-alerts { grid-column: 1 / -1; border-color: rgba(98, 230, 167, 0.16); }
+.route-card.green-candle { grid-column: 1 / -1; border-color: rgba(98, 230, 167, 0.2); background: rgba(45, 126, 87, 0.06); }
 .route-title { display: flex; align-items: center; justify-content: space-between; color: #d9dce2; font-size: 11px; font-weight: 700; }
 .route-card.high-risk .route-title i { color: #ff7d84; }
 .route-card.lower-risk .route-title i { color: #f4c152; }
 .route-card.all-alerts .route-title i { color: #62e6a7; }
+.route-card.green-candle .route-title i { color: #62e6a7; }
 .route-description { margin: 5px 0 0; color: #747b88; font-size: 9px; }
 .routing-note { margin: 12px 2px 0; color: #686f7c; font-size: 9px; }
 .routing-note i { margin-right: 5px; color: #7e8796; }
