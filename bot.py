@@ -348,12 +348,26 @@ def send_discord_alert(
     response.raise_for_status()
 
 
+def choose_webhook(rating, routes):
+    if rating is None:
+        return None
+    for minimum, webhook_url in sorted(routes, reverse=True):
+        if webhook_url and rating >= minimum:
+            return webhook_url
+    return None
+
+
 async def run_bot():
     env_file = os.getenv("AXIOM_ENV_FILE", APP_DIR / ".env")
     load_dotenv(env_file)
     DATA_DIR.mkdir(parents=True, exist_ok=True)
 
     webhook_url = os.environ["DISCORD_WEBHOOK_URL"]
+    secondary_webhook_url = os.getenv("DISCORD_SECONDARY_WEBHOOK_URL", "").strip()
+    webhook_routes = [
+        (float(os.getenv("DISCORD_WEBHOOK_MIN_RATING", "4")), webhook_url),
+        (float(os.getenv("DISCORD_SECONDARY_MIN_RATING", "2")), secondary_webhook_url),
+    ]
     access_token = os.environ["AXIOM_ACCESS_TOKEN"]
     refresh_token = os.environ["AXIOM_REFRESH_TOKEN"]
     start_market_cap = float(os.getenv("START_MARKET_CAP", "5000"))
@@ -415,16 +429,20 @@ async def run_bot():
             return
 
         rug = await asyncio.to_thread(get_rug_analysis, address, coin)
-        await asyncio.to_thread(
-            send_discord_alert,
-            webhook_url,
-            coin,
-            start_market_cap,
-            target_market_cap,
-            market_cap,
-            elapsed,
-            rug,
-        )
+        alert_webhook = choose_webhook(rug["rating"], webhook_routes)
+        if alert_webhook:
+            await asyncio.to_thread(
+                send_discord_alert,
+                alert_webhook,
+                coin,
+                start_market_cap,
+                target_market_cap,
+                market_cap,
+                elapsed,
+                rug,
+            )
+        else:
+            logging.info("No webhook route matched rug rating %s for %s", rug["rating"], address)
         alerted_coins.add(address)
         moves.pop(address, None)
         save_alerted_coins(alerted_coins)

@@ -175,16 +175,34 @@
               <div class="section-icon small discord"><i class="fa-brands fa-discord"></i></div>
               <div>
                 <h3>Discord</h3>
-                <p>The webhook receives a rich alert only after the full move completes in time.</p>
+                <p>The highest matching rug-risk threshold chooses which webhook receives the alert.</p>
               </div>
             </div>
 
             <label class="wide-field">
-              <span>Webhook URL</span>
+              <span>Webhook 1 <small>Higher risk</small></span>
               <div class="secret-input">
                 <input data-setting="DISCORD_WEBHOOK_URL" type="password" autocomplete="off" placeholder="https://discord.com/api/webhooks/…" />
                 <button class="reveal-secret" type="button" aria-label="Show webhook URL"><i class="fa-regular fa-eye"></i></button>
               </div>
+            </label>
+
+            <label class="wide-field">
+              <span>Minimum rug rating for webhook 1</span>
+              <div class="input-prefix"><i class="fa-solid fa-shield-halved"></i><input data-setting="DISCORD_WEBHOOK_MIN_RATING" type="number" min="0" max="10" step="0.1" required /><em>/ 10</em></div>
+            </label>
+
+            <label class="wide-field">
+              <span>Webhook 2 <small>Lower risk</small></span>
+              <div class="secret-input">
+                <input data-setting="DISCORD_SECONDARY_WEBHOOK_URL" type="password" autocomplete="off" placeholder="https://discord.com/api/webhooks/…" />
+                <button class="reveal-secret" type="button" aria-label="Show second webhook URL"><i class="fa-regular fa-eye"></i></button>
+              </div>
+            </label>
+
+            <label class="wide-field">
+              <span>Minimum rug rating for webhook 2</span>
+              <div class="input-prefix"><i class="fa-solid fa-shield"></i><input data-setting="DISCORD_SECONDARY_MIN_RATING" type="number" min="0" max="10" step="0.1" required /><em>/ 10</em></div>
             </label>
 
             <label class="wide-field">

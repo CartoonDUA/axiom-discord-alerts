@@ -9,6 +9,9 @@ let stopping = false;
 
 const settingDefaults = {
   DISCORD_WEBHOOK_URL: "",
+  DISCORD_WEBHOOK_MIN_RATING: "4",
+  DISCORD_SECONDARY_WEBHOOK_URL: "",
+  DISCORD_SECONDARY_MIN_RATING: "2",
   DISCORD_BOT_TOKEN: "",
   DISCORD_GUILD_ID: "",
   AXIOM_ACCESS_TOKEN: "",
@@ -101,6 +104,8 @@ function saveSettings(values) {
   const start = Number(settings.START_MARKET_CAP);
   const target = Number(settings.TARGET_MARKET_CAP);
   const seconds = Number(settings.MOVE_WINDOW_SECONDS);
+  const primaryRating = Number(settings.DISCORD_WEBHOOK_MIN_RATING);
+  const secondaryRating = Number(settings.DISCORD_SECONDARY_MIN_RATING);
   if (!Number.isFinite(start) || start <= 0) {
     return { ok: false, error: "Starting market cap must be above zero." };
   }
@@ -110,10 +115,18 @@ function saveSettings(values) {
   if (!Number.isFinite(seconds) || seconds <= 0) {
     return { ok: false, error: "Movement window must be above zero seconds." };
   }
+  if (
+    !Number.isFinite(primaryRating) || primaryRating < 0 || primaryRating > 10 ||
+    !Number.isFinite(secondaryRating) || secondaryRating < 0 || secondaryRating > 10
+  ) {
+    return { ok: false, error: "Webhook rug ratings must be between 0 and 10." };
+  }
 
   settings.START_MARKET_CAP = String(start);
   settings.TARGET_MARKET_CAP = String(target);
   settings.MOVE_WINDOW_SECONDS = String(seconds);
+  settings.DISCORD_WEBHOOK_MIN_RATING = String(primaryRating);
+  settings.DISCORD_SECONDARY_MIN_RATING = String(secondaryRating);
   writeSettings(settings);
   return { ok: true, settings, credentialsReady: credentialsReady() };
 }

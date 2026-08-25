@@ -19,6 +19,9 @@ PORT = 8765
 
 SETTING_DEFAULTS = {
     "DISCORD_WEBHOOK_URL": "",
+    "DISCORD_WEBHOOK_MIN_RATING": "4",
+    "DISCORD_SECONDARY_WEBHOOK_URL": "",
+    "DISCORD_SECONDARY_MIN_RATING": "2",
     "DISCORD_BOT_TOKEN": "",
     "DISCORD_GUILD_ID": "",
     "AXIOM_ACCESS_TOKEN": "",
@@ -70,16 +73,22 @@ def save_settings(values):
     start = float(settings["START_MARKET_CAP"])
     target = float(settings["TARGET_MARKET_CAP"])
     seconds = float(settings["MOVE_WINDOW_SECONDS"])
+    primary_rating = float(settings["DISCORD_WEBHOOK_MIN_RATING"])
+    secondary_rating = float(settings["DISCORD_SECONDARY_MIN_RATING"])
     if start <= 0:
         return {"ok": False, "error": "Starting market cap must be above zero."}
     if target <= start:
         return {"ok": False, "error": "Target market cap must be above the starting cap."}
     if seconds <= 0:
         return {"ok": False, "error": "Movement window must be above zero seconds."}
+    if not 0 <= primary_rating <= 10 or not 0 <= secondary_rating <= 10:
+        return {"ok": False, "error": "Webhook rug ratings must be between 0 and 10."}
 
     settings["START_MARKET_CAP"] = str(int(start) if start.is_integer() else start)
     settings["TARGET_MARKET_CAP"] = str(int(target) if target.is_integer() else target)
     settings["MOVE_WINDOW_SECONDS"] = str(int(seconds) if seconds.is_integer() else seconds)
+    settings["DISCORD_WEBHOOK_MIN_RATING"] = str(int(primary_rating) if primary_rating.is_integer() else primary_rating)
+    settings["DISCORD_SECONDARY_MIN_RATING"] = str(int(secondary_rating) if secondary_rating.is_integer() else secondary_rating)
 
     current = ENV_FILE.read_text(encoding="utf-8") if ENV_FILE.exists() else ""
     found = set()
