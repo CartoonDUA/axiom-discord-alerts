@@ -146,111 +146,133 @@
 
         <form id="settingsForm">
           <div class="settings-scroll">
-            <div class="settings-section-heading">
-              <div class="section-icon small"><i class="fa-solid fa-arrow-trend-up"></i></div>
-              <div>
-                <h3>Movement trigger</h3>
-                <p>The timer starts when Axiom first reports the coin at or above your starting cap.</p>
-              </div>
+            <div class="settings-stack">
+              <section class="settings-card">
+                <div class="settings-section-heading">
+                  <div class="section-icon small"><i class="fa-solid fa-arrow-trend-up"></i></div>
+                  <div>
+                    <h3>Coin movement</h3>
+                    <p>Choose how far and how quickly a coin must move.</p>
+                  </div>
+                </div>
+
+                <div class="trigger-fields">
+                  <label>
+                    <span>From</span>
+                    <div class="input-prefix"><i class="fa-solid fa-dollar-sign"></i><input data-setting="START_MARKET_CAP" type="number" min="1" step="1" required /></div>
+                  </label>
+                  <label>
+                    <span>To</span>
+                    <div class="input-prefix"><i class="fa-solid fa-bullseye"></i><input data-setting="TARGET_MARKET_CAP" type="number" min="1" step="1" required /></div>
+                  </label>
+                  <label>
+                    <span>Within</span>
+                    <div class="input-prefix"><i class="fa-regular fa-clock"></i><input data-setting="MOVE_WINDOW_SECONDS" type="number" min="1" step="1" required /><em>sec</em></div>
+                  </label>
+                </div>
+              </section>
+
+              <section class="settings-card">
+                <div class="settings-section-heading">
+                  <div class="section-icon small discord"><i class="fa-brands fa-discord"></i></div>
+                  <div>
+                    <h3>Alert routing</h3>
+                    <p>Send higher and lower rug-risk alerts to different Discord channels.</p>
+                  </div>
+                </div>
+
+                <div class="route-grid">
+                  <div class="route-card high-risk">
+                    <div class="route-title"><span>Higher risk</span><i class="fa-solid fa-shield-halved"></i></div>
+                    <label class="wide-field">
+                      <span>Webhook URL</span>
+                      <div class="secret-input">
+                        <input data-setting="DISCORD_WEBHOOK_URL" type="password" autocomplete="off" placeholder="Discord webhook…" />
+                        <button class="reveal-secret" type="button" aria-label="Show higher-risk webhook URL"><i class="fa-regular fa-eye"></i></button>
+                      </div>
+                    </label>
+                    <label class="wide-field">
+                      <span>Send when rating is at least</span>
+                      <div class="input-prefix"><i class="fa-solid fa-greater-than-equal"></i><input data-setting="DISCORD_WEBHOOK_MIN_RATING" type="number" min="0" max="10" step="0.1" required /><em>/ 10</em></div>
+                    </label>
+                  </div>
+
+                  <div class="route-card lower-risk">
+                    <div class="route-title"><span>Lower risk</span><i class="fa-solid fa-shield"></i></div>
+                    <label class="wide-field">
+                      <span>Webhook URL</span>
+                      <div class="secret-input">
+                        <input data-setting="DISCORD_SECONDARY_WEBHOOK_URL" type="password" autocomplete="off" placeholder="Discord webhook…" />
+                        <button class="reveal-secret" type="button" aria-label="Show lower-risk webhook URL"><i class="fa-regular fa-eye"></i></button>
+                      </div>
+                    </label>
+                    <label class="wide-field">
+                      <span>Send when rating is at least</span>
+                      <div class="input-prefix"><i class="fa-solid fa-greater-than-equal"></i><input data-setting="DISCORD_SECONDARY_MIN_RATING" type="number" min="0" max="10" step="0.1" required /><em>/ 10</em></div>
+                    </label>
+                  </div>
+                </div>
+                <p class="routing-note"><i class="fa-solid fa-circle-info"></i> The highest matching rating wins, so each alert goes to one webhook.</p>
+              </section>
+
+              <section class="settings-card">
+                <div class="settings-section-heading">
+                  <div class="section-icon small discord"><i class="fa-solid fa-terminal"></i></div>
+                  <div>
+                    <h3>Discord /check command</h3>
+                    <p>Connect the Discord bot that answers rug-risk checks.</p>
+                  </div>
+                </div>
+
+                <div class="two-fields">
+                  <label class="wide-field">
+                    <span>Bot token</span>
+                    <div class="secret-input">
+                      <input data-setting="DISCORD_BOT_TOKEN" type="password" autocomplete="off" />
+                      <button class="reveal-secret" type="button" aria-label="Show bot token"><i class="fa-regular fa-eye"></i></button>
+                    </div>
+                  </label>
+                  <label class="wide-field">
+                    <span>Server ID</span>
+                    <div class="input-prefix"><i class="fa-solid fa-server"></i><input data-setting="DISCORD_GUILD_ID" type="text" inputmode="numeric" autocomplete="off" /></div>
+                  </label>
+                </div>
+              </section>
+
+              <section class="settings-card">
+                <div class="settings-section-heading">
+                  <div class="section-icon small"><i class="fa-solid fa-key"></i></div>
+                  <div>
+                    <h3>Axiom account</h3>
+                    <p>Your private session credentials stay in the local .env file.</p>
+                  </div>
+                </div>
+
+                <label class="wide-field">
+                  <span>Access token</span>
+                  <div class="secret-input">
+                    <input data-setting="AXIOM_ACCESS_TOKEN" type="password" autocomplete="off" />
+                    <button class="reveal-secret" type="button" aria-label="Show access token"><i class="fa-regular fa-eye"></i></button>
+                  </div>
+                </label>
+
+                <label class="wide-field">
+                  <span>Refresh token</span>
+                  <div class="secret-input">
+                    <input data-setting="AXIOM_REFRESH_TOKEN" type="password" autocomplete="off" />
+                    <button class="reveal-secret" type="button" aria-label="Show refresh token"><i class="fa-regular fa-eye"></i></button>
+                  </div>
+                </label>
+
+                <label class="wide-field">
+                  <span>Cloudflare clearance <small>Optional</small></span>
+                  <div class="secret-input">
+                    <input data-setting="CF_CLEARANCE" type="password" autocomplete="off" />
+                    <button class="reveal-secret" type="button" aria-label="Show Cloudflare clearance"><i class="fa-regular fa-eye"></i></button>
+                  </div>
+                </label>
+              </section>
             </div>
-
-            <div class="trigger-fields">
-              <label>
-                <span>Starting market cap</span>
-                <div class="input-prefix"><i class="fa-solid fa-dollar-sign"></i><input data-setting="START_MARKET_CAP" type="number" min="1" step="1" required /></div>
-              </label>
-              <label>
-                <span>Target market cap</span>
-                <div class="input-prefix"><i class="fa-solid fa-bullseye"></i><input data-setting="TARGET_MARKET_CAP" type="number" min="1" step="1" required /></div>
-              </label>
-              <label>
-                <span>Maximum time</span>
-                <div class="input-prefix"><i class="fa-regular fa-clock"></i><input data-setting="MOVE_WINDOW_SECONDS" type="number" min="1" step="1" required /><em>sec</em></div>
-              </label>
-            </div>
-
-            <div class="settings-divider"></div>
-
-            <div class="settings-section-heading">
-              <div class="section-icon small discord"><i class="fa-brands fa-discord"></i></div>
-              <div>
-                <h3>Discord</h3>
-                <p>The highest matching rug-risk threshold chooses which webhook receives the alert.</p>
-              </div>
-            </div>
-
-            <label class="wide-field">
-              <span>Webhook 1 <small>Higher risk</small></span>
-              <div class="secret-input">
-                <input data-setting="DISCORD_WEBHOOK_URL" type="password" autocomplete="off" placeholder="https://discord.com/api/webhooks/…" />
-                <button class="reveal-secret" type="button" aria-label="Show webhook URL"><i class="fa-regular fa-eye"></i></button>
-              </div>
-            </label>
-
-            <label class="wide-field">
-              <span>Minimum rug rating for webhook 1</span>
-              <div class="input-prefix"><i class="fa-solid fa-shield-halved"></i><input data-setting="DISCORD_WEBHOOK_MIN_RATING" type="number" min="0" max="10" step="0.1" required /><em>/ 10</em></div>
-            </label>
-
-            <label class="wide-field">
-              <span>Webhook 2 <small>Lower risk</small></span>
-              <div class="secret-input">
-                <input data-setting="DISCORD_SECONDARY_WEBHOOK_URL" type="password" autocomplete="off" placeholder="https://discord.com/api/webhooks/…" />
-                <button class="reveal-secret" type="button" aria-label="Show second webhook URL"><i class="fa-regular fa-eye"></i></button>
-              </div>
-            </label>
-
-            <label class="wide-field">
-              <span>Minimum rug rating for webhook 2</span>
-              <div class="input-prefix"><i class="fa-solid fa-shield"></i><input data-setting="DISCORD_SECONDARY_MIN_RATING" type="number" min="0" max="10" step="0.1" required /><em>/ 10</em></div>
-            </label>
-
-            <label class="wide-field">
-              <span>Bot token <small>For /check</small></span>
-              <div class="secret-input">
-                <input data-setting="DISCORD_BOT_TOKEN" type="password" autocomplete="off" />
-                <button class="reveal-secret" type="button" aria-label="Show bot token"><i class="fa-regular fa-eye"></i></button>
-              </div>
-            </label>
-
-            <label class="wide-field">
-              <span>Server ID <small>For /check</small></span>
-              <div class="input-prefix"><i class="fa-solid fa-server"></i><input data-setting="DISCORD_GUILD_ID" type="text" inputmode="numeric" autocomplete="off" /></div>
-            </label>
-
-            <div class="settings-divider"></div>
-
-            <div class="settings-section-heading">
-              <div class="section-icon small"><i class="fa-solid fa-key"></i></div>
-              <div>
-                <h3>Axiom session</h3>
-                <p>These values stay in the local .env file beside the application.</p>
-              </div>
-            </div>
-
-            <label class="wide-field">
-              <span>Access token</span>
-              <div class="secret-input">
-                <input data-setting="AXIOM_ACCESS_TOKEN" type="password" autocomplete="off" />
-                <button class="reveal-secret" type="button" aria-label="Show access token"><i class="fa-regular fa-eye"></i></button>
-              </div>
-            </label>
-
-            <label class="wide-field">
-              <span>Refresh token</span>
-              <div class="secret-input">
-                <input data-setting="AXIOM_REFRESH_TOKEN" type="password" autocomplete="off" />
-                <button class="reveal-secret" type="button" aria-label="Show refresh token"><i class="fa-regular fa-eye"></i></button>
-              </div>
-            </label>
-
-            <label class="wide-field">
-              <span>Cloudflare clearance <small>Optional</small></span>
-              <div class="secret-input">
-                <input data-setting="CF_CLEARANCE" type="password" autocomplete="off" />
-                <button class="reveal-secret" type="button" aria-label="Show Cloudflare clearance"><i class="fa-regular fa-eye"></i></button>
-              </div>
-            </label>
           </div>
 
           <div class="modal-footer">
