@@ -61,6 +61,7 @@ def number_value(data, *keys):
 
 
 def get_rug_analysis(address, coin):
+    creator = first_value(coin, "creatorAddress", "creator_address", "creator")
     try:
         response = requests.get(
             f"https://api.rugcheck.xyz/v1/tokens/{address}/report",
@@ -74,14 +75,50 @@ def get_rug_analysis(address, coin):
             "rating": None,
             "details": "⚪ Rug analysis was unavailable when this alert fired.",
             "color": 0xF4C152,
+            "deployer": (
+                f"[{creator[:8]}…](https://solscan.io/account/{creator}) · history unavailable"
+                if creator
+                else "Creator wallet and history unavailable"
+            ),
         }
 
     token = report.get("token") or {}
     metadata = report.get("tokenMeta") or {}
     risks = report.get("risks") or []
     risk_names = " ".join(str(risk.get("name", "")).lower() for risk in risks)
+    creator = report.get("creator") or creator
+    creator_tokens = report.get("creatorTokens") or []
+    creator_history_risk = next(
+        (
+            risk
+            for risk in risks
+            if "creator history" in str(risk.get("name", "")).lower()
+            and "rug" in str(risk.get("name", "")).lower()
+        ),
+        None,
+    )
     score = 0.0
     details = []
+
+    if creator:
+        prior_count = len(creator_tokens)
+        if creator_history_risk:
+            score += 3.0
+            details.append(f"🔴 Deployer: {prior_count} prior launches; rugged-token history flagged")
+        elif prior_count:
+            if prior_count >= 10:
+                score += 0.5
+            details.append(f"🟡 Deployer: {prior_count} prior launches; no rugged history flagged")
+        else:
+            details.append("🟢 Deployer: no previous token launches reported")
+        deployer = (
+            f"[{creator[:8]}…{creator[-4:]}](https://solscan.io/account/{creator}) · "
+            f"{prior_count} prior launches"
+            + (" · **RUGGED HISTORY FLAGGED**" if creator_history_risk else "")
+        )
+    else:
+        details.append("⚪ Deployer: creator wallet not reported")
+        deployer = "Creator wallet and history unavailable"
 
     mint_authority = report.get("mintAuthority") or token.get("mintAuthority")
     if mint_authority:
@@ -171,12 +208,21 @@ def get_rug_analysis(address, coin):
         score = max(score, normalized / 10)
 
     rating = round(min(10, score), 1)
-    important_risks = [risk for risk in risks if risk.get("description")][:2]
+    important_risks = [
+        risk
+        for risk in risks
+        if risk.get("description") and risk is not creator_history_risk
+    ][:2]
     for risk in important_risks:
         details.append(f"• {risk['description']}")
 
     color = 0xFF6B73 if rating >= 7 else 0xF4C152 if rating >= 4 else 0x62E6A7
-    return {"rating": rating, "details": "\n".join(details)[:1024], "color": color}
+    return {
+        "rating": rating,
+        "details": "\n".join(details)[:1024],
+        "color": color,
+        "deployer": deployer,
+    }
 
 
 def send_discord_alert(
@@ -215,6 +261,7 @@ def send_discord_alert(
                         "inline": True,
                     },
                     {"name": "Coin address", "value": f"```{address}```"},
+                    {"name": "Deployer trace", "value": rug["deployer"]},
                     {
                         "name": (
                             f"RUG RISK • {rug['rating']}/10"
