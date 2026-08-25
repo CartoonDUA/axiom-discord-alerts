@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell } = require("electron");
+const { app, BrowserWindow, clipboard, ipcMain, shell } = require("electron");
 const { spawn } = require("child_process");
 const fs = require("fs");
 const path = require("path");
@@ -126,6 +126,12 @@ function logLine(line) {
   const message = line.trim();
   if (!message) return;
 
+  const alertEvent = message.match(/ALERT_EVENT (\{.+\})$/);
+  if (alertEvent) {
+    emit("bot-alert", JSON.parse(alertEvent[1]));
+    return;
+  }
+
   let level = "info";
   if (/error|failed|exception/i.test(message)) level = "error";
   if (/warning|reconnecting/i.test(message)) level = "warning";
@@ -135,7 +141,6 @@ function logLine(line) {
   }
   if (/Alerted .+: \$/i.test(message)) {
     level = "alert";
-    emit("bot-alert");
   }
 
   emit("bot-log", {
@@ -253,6 +258,16 @@ ipcMain.on("window:minimize", () => mainWindow?.minimize());
 ipcMain.on("window:close", () => mainWindow?.close());
 ipcMain.on("open:url", (_, url) => {
   if (url === "https://axiom.trade/") shell.openExternal(url);
+});
+ipcMain.on("coin:open", (_, address) => {
+  if (/^[1-9A-HJ-NP-Za-km-z]{32,50}$/.test(address)) {
+    shell.openExternal(`https://axiom.trade/t/${address}`);
+  }
+});
+ipcMain.handle("coin:copy", (_, address) => {
+  if (!/^[1-9A-HJ-NP-Za-km-z]{32,50}$/.test(address)) return false;
+  clipboard.writeText(address);
+  return true;
 });
 
 app.whenReady().then(createWindow);

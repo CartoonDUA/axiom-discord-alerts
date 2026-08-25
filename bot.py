@@ -82,7 +82,12 @@ def send_discord_alert(
                         "value": f"{elapsed:.1f}s",
                         "inline": True,
                     },
-                    {"name": "Token address", "value": f"`{address}`"},
+                    {
+                        "name": "Open in Axiom",
+                        "value": f"[View coin]({axiom_url})",
+                        "inline": True,
+                    },
+                    {"name": "Coin address", "value": f"```{address}```"},
                 ],
             }
         ],
@@ -170,6 +175,23 @@ async def run_bot():
         alerted_coins.add(address)
         moves.pop(address, None)
         save_alerted_coins(alerted_coins)
+        logging.info(
+            "ALERT_EVENT %s",
+            json.dumps(
+                {
+                    "address": address,
+                    "name": first_value(coin, "tokenName", "token_name", "name")
+                    or "Unknown coin",
+                    "ticker": first_value(
+                        coin, "tokenTicker", "token_ticker", "ticker", "symbol"
+                    )
+                    or "?",
+                    "marketCap": round(market_cap),
+                    "elapsed": round(elapsed, 1),
+                },
+                separators=(",", ":"),
+            ),
+        )
         logging.info(
             "Alerted %s: $%.0f to $%.0f in %.1f seconds",
             address,

@@ -27,6 +27,8 @@ npm start
 
 Use **Start monitor** and **Stop monitor** inside the app. Closing the app also stops the Python monitor process. Stop the monitor before saving configuration changes.
 
+When an alert fires, click the coin in Recent Activity or use **Open in Axiom** to open its trading page. Use **Copy address** to put the coin address on your clipboard. Discord alerts also link their title and **View coin** action to the same Axiom page.
+
 ## Build the Windows application
 
 ```powershell

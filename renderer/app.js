@@ -122,6 +122,64 @@ function addLog(entry) {
   activityList.scrollTop = activityList.scrollHeight;
 }
 
+function addAlert(alert) {
+  document.getElementById("emptyState")?.remove();
+  const card = document.createElement("div");
+  card.className = "alert-card";
+
+  const details = document.createElement("button");
+  details.className = "alert-details";
+  details.type = "button";
+  details.title = "Open this coin in Axiom";
+
+  const icon = document.createElement("span");
+  icon.className = "alert-coin-icon";
+  icon.innerHTML = '<i class="fa-solid fa-bolt"></i>';
+
+  const text = document.createElement("span");
+  text.className = "alert-text";
+
+  const title = document.createElement("strong");
+  title.textContent = `${alert.name} (${alert.ticker})`;
+
+  const meta = document.createElement("span");
+  meta.textContent = `${formatCap(alert.marketCap)} in ${alert.elapsed}s · ${alert.address}`;
+
+  text.append(title, meta);
+  details.append(icon, text);
+
+  const actions = document.createElement("div");
+  actions.className = "alert-actions";
+
+  const openButton = document.createElement("button");
+  openButton.className = "alert-action open";
+  openButton.type = "button";
+  openButton.innerHTML = '<i class="fa-solid fa-arrow-up-right-from-square"></i><span>Open in Axiom</span>';
+
+  const copyButton = document.createElement("button");
+  copyButton.className = "alert-action";
+  copyButton.type = "button";
+  copyButton.innerHTML = '<i class="fa-regular fa-copy"></i><span>Copy address</span>';
+
+  const openCoin = () => window.axiom.openCoin(alert.address);
+  details.addEventListener("click", openCoin);
+  openButton.addEventListener("click", openCoin);
+  copyButton.addEventListener("click", async () => {
+    if (!(await window.axiom.copyCoin(alert.address))) return;
+    copyButton.querySelector("i").className = "fa-solid fa-check";
+    copyButton.querySelector("span").textContent = "Copied";
+    setTimeout(() => {
+      copyButton.querySelector("i").className = "fa-regular fa-copy";
+      copyButton.querySelector("span").textContent = "Copy address";
+    }, 1500);
+  });
+
+  actions.append(openButton, copyButton);
+  card.append(details, actions);
+  activityList.append(card);
+  activityList.scrollTop = activityList.scrollHeight;
+}
+
 startButton.addEventListener("click", async () => {
   const result = await window.axiom.start();
   if (!result.ok) {
@@ -183,9 +241,10 @@ document.getElementById("clearActivity").addEventListener("click", () => {
 
 window.axiom.onStatus(({ state, label }) => setStatus(state, label));
 window.axiom.onLog(addLog);
-window.axiom.onAlert(() => {
+window.axiom.onAlert((alert) => {
   alerts += 1;
   alertCount.textContent = String(alerts);
+  addAlert(alert);
 });
 
 Promise.all([window.axiom.state(), window.axiom.getSettings()]).then(([state, settings]) => {
