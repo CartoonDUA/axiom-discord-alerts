@@ -7,9 +7,9 @@ from pathlib import Path
 import re
 import time
 
+import aiohttp
 import discord
 from discord import app_commands
-import requests
 from axiomtradeapi import AxiomTradeClient
 from dotenv import load_dotenv
 
@@ -19,6 +19,9 @@ DATA_DIR = Path(os.getenv("AXIOM_DATA_DIR", APP_DIR))
 STATE_FILE = DATA_DIR / "alerted_coins.json"
 sol_price = None
 sol_price_checked_at = 0
+http_session = None
+rug_tasks = {}
+deployer_history = {}
 
 
 def first_value(coin, *keys):
@@ -29,19 +32,20 @@ def first_value(coin, *keys):
     return None
 
 
-def get_sol_price():
+async def get_sol_price():
     global sol_price, sol_price_checked_at
 
     if sol_price and time.time() - sol_price_checked_at < 60:
         return sol_price
 
-    response = requests.get(
+    async with http_session.get(
         "https://api.coingecko.com/api/v3/simple/price",
         params={"ids": "solana", "vs_currencies": "usd"},
-        timeout=15,
-    )
-    response.raise_for_status()
-    sol_price = float(response.json()["solana"]["usd"])
+        timeout=aiohttp.ClientTimeout(total=15),
+    ) as response:
+        response.raise_for_status()
+        data = await response.json()
+    sol_price = float(data["solana"]["usd"])
     sol_price_checked_at = time.time()
     return sol_price
 
@@ -71,30 +75,30 @@ def percentage_value(data, *keys):
     return value
 
 
-def get_bubble_networks(address):
+async def get_bubble_networks(address):
     try:
-        response = requests.get(
+        async with http_session.get(
             f"https://api.rugcheck.xyz/v1/tokens/{address}/insiders/networks",
-            timeout=10,
-        )
-        response.raise_for_status()
-        networks = response.json()
+            timeout=aiohttp.ClientTimeout(total=10),
+        ) as response:
+            response.raise_for_status()
+            networks = await response.json()
         return networks if isinstance(networks, list) else []
-    except requests.RequestException as error:
+    except (aiohttp.ClientError, asyncio.TimeoutError) as error:
         logging.warning("Bubble-map analysis unavailable for %s: %s", address, error)
         return None
 
 
-def get_rug_analysis(address, coin):
+async def get_rug_analysis(address, coin):
     creator = first_value(coin, "creatorAddress", "creator_address", "creator")
     try:
         for attempt in range(3):
-            response = requests.get(
+            async with http_session.get(
                 f"https://api.rugcheck.xyz/v1/tokens/{address}/report",
-                timeout=20,
-            )
-            response.raise_for_status()
-            report = response.json()
+                timeout=aiohttp.ClientTimeout(total=20),
+            ) as response:
+                response.raise_for_status()
+                report = await response.json()
             report_ready = (
                 bool(report.get("markets"))
                 and report.get("totalMarketLiquidity") is not None
@@ -102,8 +106,8 @@ def get_rug_analysis(address, coin):
             )
             if report_ready or attempt == 2:
                 break
-            time.sleep(1)
-    except requests.RequestException as error:
+            await asyncio.sleep(1)
+    except (aiohttp.ClientError, asyncio.TimeoutError) as error:
         logging.warning("Rug analysis unavailable for %s: %s", address, error)
         return {
             "rating": None,
@@ -123,7 +127,7 @@ def get_rug_analysis(address, coin):
     risks = report.get("risks") or []
     bubble_networks = report.get("insiderNetworks")
     if bubble_networks is None:
-        bubble_networks = get_bubble_networks(address)
+        bubble_networks = await get_bubble_networks(address)
     risk_names = " ".join(str(risk.get("name", "")).lower() for risk in risks)
     creator = report.get("creator") or creator
     creator_tokens = report.get("creatorTokens") or []
@@ -136,6 +140,16 @@ def get_rug_analysis(address, coin):
         ),
         None,
     )
+    cached_creator = deployer_history.get(creator)
+    if creator and cached_creator:
+        creator_tokens = creator_tokens or cached_creator["tokens"]
+        creator_history_risk = creator_history_risk or cached_creator["risk"]
+    if creator:
+        deployer_history[creator] = {
+            "checked_at": time.monotonic(),
+            "tokens": creator_tokens,
+            "risk": creator_history_risk,
+        }
     score = 0.0
     details = []
 
@@ -368,6 +382,27 @@ def get_rug_analysis(address, coin):
     }
 
 
+def get_rug_task(address, coin):
+    cached = rug_tasks.get(address)
+    if cached and not cached["task"].cancelled():
+        if not cached["task"].done() or cached["task"].exception() is None:
+            return cached["task"]
+
+    task = asyncio.create_task(get_rug_analysis(address, coin))
+    rug_tasks[address] = {"created_at": time.monotonic(), "task": task}
+    return task
+
+
+def prune_analysis_cache(max_age_seconds=900):
+    now = time.monotonic()
+    for address, cached in list(rug_tasks.items()):
+        if now - cached["created_at"] > max_age_seconds and cached["task"].done():
+            rug_tasks.pop(address, None)
+    for creator, cached in list(deployer_history.items()):
+        if now - cached["checked_at"] > 3600:
+            deployer_history.pop(creator, None)
+
+
 def create_discord_client(guild_id):
     client = discord.Client(intents=discord.Intents.none())
     commands = app_commands.CommandTree(client)
@@ -382,7 +417,7 @@ def create_discord_client(guild_id):
             return
 
         await interaction.response.defer(thinking=True)
-        rug = await asyncio.to_thread(get_rug_analysis, address, {})
+        rug = await get_rug_task(address, {})
         rating = f"{rug['rating']}/10" if rug["rating"] is not None else "UNAVAILABLE"
         axiom_url = f"https://axiom.trade/t/{address}"
         embed = discord.Embed(
@@ -427,7 +462,30 @@ async def run_discord_commands(token, guild_id):
             await client.close()
 
 
-def send_discord_alert(
+async def discord_request(method, url, *, params=None, payload=None):
+    for attempt in range(4):
+        async with http_session.request(
+            method,
+            url,
+            params=params,
+            json=payload,
+            timeout=aiohttp.ClientTimeout(total=15),
+        ) as response:
+            body = await response.text()
+            if response.status == 429 and attempt < 3:
+                try:
+                    retry_after = float(json.loads(body).get("retry_after", 1))
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    retry_after = float(response.headers.get("Retry-After", 1))
+                logging.warning("Discord rate limit reached; retrying in %.2fs", retry_after)
+                await asyncio.sleep(retry_after)
+                continue
+            response.raise_for_status()
+            return json.loads(body) if body else None
+    return None
+
+
+async def send_discord_alert(
     webhook_url, coin, start_market_cap, target_market_cap, market_cap, elapsed, rug
 ):
     address = first_value(coin, "tokenAddress", "token_address", "address", "mint")
@@ -480,11 +538,10 @@ def send_discord_alert(
         ],
     }
 
-    response = requests.post(webhook_url, json=payload, timeout=15)
-    response.raise_for_status()
+    await discord_request("POST", webhook_url, payload=payload)
 
 
-def send_green_candle_alert(webhook_url, coin, gain_percent, original_call_url):
+async def send_green_candle_alert(webhook_url, coin, gain_percent, original_call_url):
     address = first_value(coin, "tokenAddress", "token_address", "address", "mint")
     ticker = first_value(coin, "tokenTicker", "token_ticker", "ticker", "symbol") or "?"
     ticker = ticker.lstrip("$")
@@ -506,62 +563,91 @@ def send_green_candle_alert(webhook_url, coin, gain_percent, original_call_url):
             }
         ],
     }
-    response = requests.post(webhook_url, json=payload, timeout=15)
-    response.raise_for_status()
+    await discord_request("POST", webhook_url, payload=payload)
 
 
-def send_momentum_alert(webhook_url, coin, gain_percent, elapsed, rug):
+def momentum_payload(coin, gain_percent, elapsed, rug=None):
     address = first_value(coin, "tokenAddress", "token_address", "address", "mint")
     ticker = (first_value(coin, "tokenTicker", "token_ticker", "ticker", "symbol") or "?").lstrip("$")
     percentage = f"{gain_percent:g}"
     axiom_url = f"https://axiom.trade/t/{address}"
-    rating = f"{rug['rating']}/10" if rug["rating"] is not None else "UNAVAILABLE"
-    payload = {
+    fields = [
+        {
+            "name": "Open in Axiom",
+            "value": f"[View coin]({axiom_url})",
+            "inline": True,
+        },
+        {
+            "name": "Coin address",
+            "value": f"```{address}```",
+            "inline": False,
+        },
+    ]
+    if rug is None:
+        color = 0x8E7CFF
+        fields.append(
+            {
+                "name": "Rug analysis",
+                "value": "Full RugCheck, deployer, liquidity and bubble-map checks are running now.",
+                "inline": False,
+            }
+        )
+        footer = "RUG RISK • ANALYZING… · Initial Axiom filters passed"
+    else:
+        rating = f"{rug['rating']}/10" if rug["rating"] is not None else "UNAVAILABLE"
+        color = rug["color"]
+        fields.extend(
+            [
+                {
+                    "name": "Deployer trace",
+                    "value": rug["deployer"],
+                    "inline": False,
+                },
+                {"name": "Why this score", "value": rug["details"], "inline": False},
+            ]
+        )
+        footer = f"RUG RISK • {rating} · Automated screening — not a guarantee."
+    return {
         "username": "Premium Momentum",
         "embeds": [
             {
                 "title": f"+{percentage}% · ${ticker} · RISING FAST",
                 "url": axiom_url,
                 "description": f"**Premium caught ${ticker} starting to move** · +{percentage}% in {elapsed:.1f}s · 🟣 Solana",
-                "color": rug["color"],
-                "fields": [
-                    {
-                        "name": "Open in Axiom",
-                        "value": f"[View coin]({axiom_url})",
-                        "inline": True,
-                    },
-                    {
-                        "name": "Coin address",
-                        "value": f"```{address}```",
-                        "inline": False,
-                    },
-                    {
-                        "name": "Deployer trace",
-                        "value": rug["deployer"],
-                        "inline": False,
-                    },
-                    {"name": "Why this score", "value": rug["details"], "inline": False},
-                ],
-                "footer": {
-                    "text": f"RUG RISK • {rating} · Automated screening — not a guarantee."
-                },
+                "color": color,
+                "fields": fields,
+                "footer": {"text": footer},
             }
         ],
     }
-    response = requests.post(
+
+
+async def send_momentum_alert(webhook_url, coin, gain_percent, elapsed):
+    message = await discord_request(
+        "POST",
         webhook_url,
         params={"wait": "true"},
-        json=payload,
-        timeout=15,
+        payload=momentum_payload(coin, gain_percent, elapsed),
     )
-    response.raise_for_status()
-    message = response.json()
-    if message.get("guild_id") and message.get("channel_id") and message.get("id"):
-        return (
-            f"https://discord.com/channels/{message['guild_id']}/"
-            f"{message['channel_id']}/{message['id']}"
-        )
+    if message and message.get("guild_id") and message.get("channel_id") and message.get("id"):
+        return {
+            "id": message["id"],
+            "url": (
+                f"https://discord.com/channels/{message['guild_id']}/"
+                f"{message['channel_id']}/{message['id']}"
+            ),
+        }
     return None
+
+
+async def update_momentum_alert(webhook_url, message_id, coin, gain_percent, elapsed, rug):
+    payload = momentum_payload(coin, gain_percent, elapsed, rug)
+    payload.pop("username", None)
+    await discord_request(
+        "PATCH",
+        f"{webhook_url}/messages/{message_id}",
+        payload=payload,
+    )
 
 
 def choose_webhook(rating, routes):
@@ -573,17 +659,23 @@ def choose_webhook(rating, routes):
     return None
 
 
-def passes_audit(coin, market_cap, settings):
+def coin_age_minutes(coin):
     created_at = first_value(coin, "created_at", "createdAt", "pairCreatedAt", "open_trading")
     if not created_at:
-        return False
+        return None
     try:
         created = datetime.fromisoformat(str(created_at).replace("Z", "+00:00"))
     except ValueError:
-        return False
+        return None
     if created.tzinfo is None:
         created = created.replace(tzinfo=timezone.utc)
-    age_minutes = (datetime.now(timezone.utc) - created).total_seconds() / 60
+    return (datetime.now(timezone.utc) - created).total_seconds() / 60
+
+
+def passes_static_audit(coin, settings):
+    age_minutes = coin_age_minutes(coin)
+    if age_minutes is None:
+        return False
     extra = coin.get("extra") if isinstance(coin.get("extra"), dict) else {}
     pro_traders = number_value(coin, "pro_traders", "proTraders", "pro_trader_count", "proTraderCount")
     if pro_traders is None:
@@ -625,14 +717,11 @@ def passes_audit(coin, market_cap, settings):
     return (
         age_minutes <= settings["max_age"]
         and pro_traders >= settings["min_pro_traders"]
-        and market_cap >= settings["min_market_cap"]
         and global_fees >= settings["min_global_fees"]
         and (not settings["require_twitter"] or bool(twitter))
         and concentration_ok
         and authorities_ok
     )
-
-
 def log_tracking(action, coin, address, market_cap, target_market_cap, elapsed=0):
     logging.info(
         "TRACKING_EVENT %s",
@@ -691,7 +780,10 @@ async def run_bot():
 
     alerted_coins = load_alerted_coins()
     coins_by_pair = {}
+    coin_seen_at = {}
     moves = {}
+    finalizing = set()
+    background_tasks = set()
     price_feed_ready = False
     client = AxiomTradeClient(
         auth_token=access_token,
@@ -699,7 +791,165 @@ async def run_bot():
         use_saved_tokens=False,
     )
 
-    async def check_price(pair_address, price_sol):
+    def start_background(coroutine, label):
+        task = asyncio.create_task(coroutine, name=label)
+        background_tasks.add(task)
+
+        def finished(completed):
+            background_tasks.discard(completed)
+            if completed.cancelled():
+                return
+            error = completed.exception()
+            if error:
+                logging.error(
+                    "%s failed: %s",
+                    completed.get_name(),
+                    error,
+                    exc_info=(type(error), error, error.__traceback__),
+                )
+
+        task.add_done_callback(finished)
+        return task
+
+    async def enrich_momentum(move, coin, address, message, elapsed):
+        try:
+            rug = await asyncio.shield(move["rug_task"])
+            await update_momentum_alert(
+                green_candle_webhook_url,
+                message["id"],
+                coin,
+                early_momentum_percent,
+                elapsed,
+                rug,
+            )
+            logging.info("Momentum rug report updated for %s", address)
+        except Exception as error:
+            logging.warning("Could not enrich momentum alert for %s: %s", address, error)
+
+    async def publish_momentum(move, coin, address, elapsed):
+        try:
+            message = await send_momentum_alert(
+                green_candle_webhook_url,
+                coin,
+                early_momentum_percent,
+                elapsed,
+            )
+        except Exception:
+            move["momentum_sent"] = False
+            raise
+        if not message:
+            return None
+        move["momentum_message_url"] = message["url"]
+        logging.info(
+            "Momentum alerted %s at +%g%% in %.1fs",
+            address,
+            early_momentum_percent,
+            elapsed,
+        )
+        start_background(
+            enrich_momentum(move, coin, address, message, elapsed),
+            f"momentum-rug-{address[:8]}",
+        )
+        return message["url"]
+
+    async def publish_green_candle(move, coin, address, actual_gain):
+        original_call_url = move["momentum_message_url"]
+        if move["momentum_task"]:
+            try:
+                original_call_url = await move["momentum_task"]
+            except Exception:
+                original_call_url = move["momentum_message_url"]
+        try:
+            await send_green_candle_alert(
+                green_candle_webhook_url,
+                coin,
+                round(actual_gain),
+                original_call_url,
+            )
+        except Exception:
+            move["green_candle_sent"] = False
+            raise
+        logging.info("Green Candle alerted %s at +%.0f%%", address, actual_gain)
+
+    async def finish_alert(move, coin, address, market_cap, elapsed):
+        try:
+            rug = await asyncio.shield(move["rug_task"])
+            alert_webhooks = []
+            if all_webhook_url:
+                alert_webhooks.append(all_webhook_url)
+            risk_webhook = choose_webhook(rug["rating"], webhook_routes)
+            if risk_webhook and risk_webhook not in alert_webhooks:
+                alert_webhooks.append(risk_webhook)
+
+            pending_webhooks = [
+                alert_webhook
+                for alert_webhook in alert_webhooks
+                if alert_webhook not in move["delivered_webhooks"]
+            ]
+            if pending_webhooks:
+                results = await asyncio.gather(
+                    *(
+                        send_discord_alert(
+                            alert_webhook,
+                            coin,
+                            start_market_cap,
+                            target_market_cap,
+                            market_cap,
+                            elapsed,
+                            rug,
+                        )
+                        for alert_webhook in pending_webhooks
+                    ),
+                    return_exceptions=True,
+                )
+                errors = []
+                for alert_webhook, result in zip(pending_webhooks, results):
+                    if isinstance(result, Exception):
+                        errors.append(result)
+                    else:
+                        move["delivered_webhooks"].add(alert_webhook)
+                if errors:
+                    raise errors[0]
+            if not alert_webhooks:
+                logging.info(
+                    "No webhook route matched rug rating %s for %s",
+                    rug["rating"],
+                    address,
+                )
+
+            alerted_coins.add(address)
+            moves.pop(address, None)
+            log_tracking("remove", coin, address, market_cap, target_market_cap, elapsed)
+            await asyncio.to_thread(save_alerted_coins, set(alerted_coins))
+            logging.info(
+                "ALERT_EVENT %s",
+                json.dumps(
+                    {
+                        "address": address,
+                        "name": first_value(coin, "tokenName", "token_name", "name")
+                        or "Unknown coin",
+                        "ticker": first_value(
+                            coin, "tokenTicker", "token_ticker", "ticker", "symbol"
+                        )
+                        or "?",
+                        "marketCap": round(market_cap),
+                        "elapsed": round(elapsed, 1),
+                        "rugRating": rug["rating"],
+                    },
+                    separators=(",", ":"),
+                ),
+            )
+            logging.info(
+                "Alerted %s: $%.0f to $%.0f in %.1f seconds",
+                address,
+                move["started_cap"],
+                market_cap,
+                elapsed,
+            )
+        finally:
+            finalizing.discard(address)
+
+    def check_price(pair_address, price_sol):
         nonlocal price_feed_ready
 
         coin = coins_by_pair.get(pair_address)
@@ -707,7 +957,7 @@ async def run_bot():
             return
 
         address = first_value(coin, "tokenAddress", "token_address", "address", "mint")
-        if not address or address in alerted_coins:
+        if not address or address in alerted_coins or address in finalizing:
             return
 
         try:
@@ -715,7 +965,7 @@ async def run_bot():
         except (KeyError, TypeError, ValueError):
             return
 
-        if not passes_audit(coin, market_cap, audit_settings):
+        if market_cap < audit_settings["min_market_cap"]:
             if address in moves:
                 log_tracking("remove", coin, address, market_cap, target_market_cap)
             moves.pop(address, None)
@@ -745,9 +995,9 @@ async def run_bot():
                 "last_update": now,
                 "momentum_since": None,
                 "momentum_message_url": None,
-                "rug_task": asyncio.create_task(
-                    asyncio.to_thread(get_rug_analysis, address, coin)
-                ),
+                "momentum_task": None,
+                "delivered_webhooks": set(),
+                "rug_task": get_rug_task(address, coin),
             }
             ticker = first_value(coin, "tokenTicker", "token_ticker") or address[:8]
             logging.info(
@@ -784,17 +1034,11 @@ async def run_bot():
             and move["momentum_since"] is not None
             and now - move["momentum_since"] >= early_momentum_hold
         ):
-            rug = await move["rug_task"]
-            move["momentum_message_url"] = await asyncio.to_thread(
-                send_momentum_alert,
-                green_candle_webhook_url,
-                coin,
-                early_momentum_percent,
-                elapsed,
-                rug,
-            )
             move["momentum_sent"] = True
-            logging.info("Momentum alerted %s at +%g%% in %.1fs", address, early_momentum_percent, elapsed)
+            move["momentum_task"] = start_background(
+                publish_momentum(move, coin, address, elapsed),
+                f"momentum-{address[:8]}",
+            )
 
         if (
             green_candle_webhook_url
@@ -802,78 +1046,30 @@ async def run_bot():
             and market_cap >= green_candle_target
         ):
             actual_gain = (market_cap / move["started_cap"] - 1) * 100
-            await asyncio.to_thread(
-                send_green_candle_alert,
-                green_candle_webhook_url,
-                coin,
-                round(actual_gain),
-                move["momentum_message_url"],
-            )
             move["green_candle_sent"] = True
-            logging.info("Green Candle alerted %s at +%.0f%%", address, actual_gain)
+            start_background(
+                publish_green_candle(move, coin, address, actual_gain),
+                f"green-candle-{address[:8]}",
+            )
 
         if market_cap < target_market_cap:
             return
 
-        rug = await asyncio.to_thread(get_rug_analysis, address, coin)
-        alert_webhooks = []
-        if all_webhook_url:
-            alert_webhooks.append(all_webhook_url)
-        risk_webhook = choose_webhook(rug["rating"], webhook_routes)
-        if risk_webhook and risk_webhook not in alert_webhooks:
-            alert_webhooks.append(risk_webhook)
-        for alert_webhook in alert_webhooks:
-            await asyncio.to_thread(
-                send_discord_alert,
-                alert_webhook,
-                coin,
-                start_market_cap,
-                target_market_cap,
-                market_cap,
-                elapsed,
-                rug,
-            )
-        if not alert_webhooks:
-            logging.info("No webhook route matched rug rating %s for %s", rug["rating"], address)
-        alerted_coins.add(address)
-        moves.pop(address, None)
-        log_tracking("remove", coin, address, market_cap, target_market_cap, elapsed)
-        save_alerted_coins(alerted_coins)
-        logging.info(
-            "ALERT_EVENT %s",
-            json.dumps(
-                {
-                    "address": address,
-                    "name": first_value(coin, "tokenName", "token_name", "name")
-                    or "Unknown coin",
-                    "ticker": first_value(
-                        coin, "tokenTicker", "token_ticker", "ticker", "symbol"
-                    )
-                    or "?",
-                    "marketCap": round(market_cap),
-                    "elapsed": round(elapsed, 1),
-                    "rugRating": rug["rating"],
-                },
-                separators=(",", ":"),
-            ),
-        )
-        logging.info(
-            "Alerted %s: $%.0f to $%.0f in %.1f seconds",
-            address,
-            move["started_cap"],
-            market_cap,
-            elapsed,
+        finalizing.add(address)
+        start_background(
+            finish_alert(move, coin, address, market_cap, elapsed),
+            f"target-alert-{address[:8]}",
         )
 
     async def refresh_sol_price():
         while True:
             try:
-                await asyncio.to_thread(get_sol_price)
+                await get_sol_price()
             except Exception as error:
                 logging.warning("Could not refresh SOL price: %s", error)
             await asyncio.sleep(30)
 
-    await asyncio.to_thread(get_sol_price)
+    await get_sol_price()
 
     while True:
         new_pairs = client.get_websocket_client()
@@ -884,11 +1080,31 @@ async def run_bot():
                 message = json.loads(raw)
                 room = message.get("room", "")
                 if room.startswith("b-") and message.get("content") is not None:
-                    await check_price(room[2:], message["content"])
+                    check_price(room[2:], message["content"])
             except json.JSONDecodeError:
                 return
 
         prices._dispatch = price_message
+
+        async def remove_pair(pair_address, send_leave=True):
+            coin = coins_by_pair.pop(pair_address, None)
+            coin_seen_at.pop(pair_address, None)
+            if not coin:
+                return
+            address = first_value(coin, "tokenAddress", "token_address")
+            move = moves.pop(address, None)
+            if move:
+                log_tracking(
+                    "remove",
+                    coin,
+                    address,
+                    move["started_cap"],
+                    target_market_cap,
+                )
+            if send_leave:
+                await prices._send(
+                    json.dumps({"action": "leave", "room": f"b-{pair_address}"})
+                )
 
         async def subscribe_coin(coins):
             for coin in coins:
@@ -897,21 +1113,46 @@ async def run_bot():
                 if not pair_address or not address:
                     continue
 
-                if pair_address in coins_by_pair:
-                    coins_by_pair[pair_address].update(coin)
+                existing = coins_by_pair.get(pair_address)
+                merged_coin = {**existing, **coin} if existing else coin
+                if not passes_static_audit(merged_coin, audit_settings):
+                    if existing:
+                        await remove_pair(pair_address)
                     continue
 
-                coins_by_pair[pair_address] = coin
+                coins_by_pair[pair_address] = merged_coin
+                coin_seen_at[pair_address] = time.monotonic()
+                if existing:
+                    continue
                 await prices._send(
                     json.dumps({"action": "join", "room": f"b-{pair_address}"})
                 )
+
+        async def prune_stale_pairs():
+            while True:
+                await asyncio.sleep(15)
+                now = time.monotonic()
+                stale_pairs = [
+                    pair_address
+                    for pair_address, coin in coins_by_pair.items()
+                    if (age := coin_age_minutes(coin)) is None
+                    or age > audit_settings["max_age"]
+                    or now - coin_seen_at.get(pair_address, now)
+                    > audit_settings["max_age"] * 60
+                ]
+                for pair_address in stale_pairs:
+                    await remove_pair(pair_address)
+                prune_analysis_cache(audit_settings["max_age"] * 60)
 
         tasks = []
         try:
             if not await prices.connect():
                 raise ConnectionError("Axiom price WebSocket connection failed")
 
-            for pair_address in coins_by_pair:
+            for pair_address, coin in list(coins_by_pair.items()):
+                if not passes_static_audit(coin, audit_settings):
+                    await remove_pair(pair_address, send_leave=False)
+                    continue
                 await prices._send(
                     json.dumps({"action": "join", "room": f"b-{pair_address}"})
                 )
@@ -929,10 +1170,20 @@ async def run_bot():
                 asyncio.create_task(prices.start()),
                 asyncio.create_task(new_pairs.start()),
                 asyncio.create_task(refresh_sol_price()),
+                asyncio.create_task(prune_stale_pairs()),
             ]
             await asyncio.wait(tasks[:2], return_when=asyncio.FIRST_COMPLETED)
             raise ConnectionError("Axiom WebSocket connection closed")
         except asyncio.CancelledError:
+            for task in list(background_tasks):
+                task.cancel()
+            for cached in list(rug_tasks.values()):
+                cached["task"].cancel()
+            await asyncio.gather(
+                *background_tasks,
+                *(cached["task"] for cached in rug_tasks.values()),
+                return_exceptions=True,
+            )
             raise
         except Exception:
             logging.exception("Connection lost; reconnecting in 5 seconds")
@@ -947,15 +1198,27 @@ async def run_bot():
 
 
 async def main():
+    global http_session
+
     env_file = os.getenv("AXIOM_ENV_FILE", APP_DIR / ".env")
     load_dotenv(env_file)
     token = os.getenv("DISCORD_BOT_TOKEN", "").strip()
     guild_id = os.getenv("DISCORD_GUILD_ID", "").strip()
-    if token:
-        await asyncio.gather(run_bot(), run_discord_commands(token, guild_id))
-    else:
-        logging.info("Discord /check is disabled until a bot token is added in Settings")
-        await run_bot()
+    connector = aiohttp.TCPConnector(limit=100, limit_per_host=12, ttl_dns_cache=300)
+    async with aiohttp.ClientSession(
+        connector=connector,
+        timeout=aiohttp.ClientTimeout(total=25),
+        headers={"User-Agent": "AxiomDiscordAlerts/1.2"},
+    ) as session:
+        http_session = session
+        try:
+            if token:
+                await asyncio.gather(run_bot(), run_discord_commands(token, guild_id))
+            else:
+                logging.info("Discord /check is disabled until a bot token is added in Settings")
+                await run_bot()
+        finally:
+            http_session = None
 
 
 if __name__ == "__main__":
