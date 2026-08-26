@@ -64,6 +64,13 @@ def number_value(data, *keys):
         return None
 
 
+def percentage_value(data, *keys):
+    value = number_value(data, *keys)
+    if value is not None and 0 <= value <= 1:
+        return value * 100
+    return value
+
+
 def get_bubble_networks(address):
     try:
         response = requests.get(
@@ -477,19 +484,24 @@ def send_discord_alert(
     response.raise_for_status()
 
 
-def send_green_candle_alert(webhook_url, coin, gain_percent):
+def send_green_candle_alert(webhook_url, coin, gain_percent, original_call_url):
     address = first_value(coin, "tokenAddress", "token_address", "address", "mint")
     ticker = first_value(coin, "tokenTicker", "token_ticker", "ticker", "symbol") or "?"
     ticker = ticker.lstrip("$")
     percentage = f"{gain_percent:g}"
     axiom_url = f"https://axiom.trade/t/{address}"
+    description = f"**Premium just caught ${ticker} hitting +{percentage}%** · 🟣 Solana"
+    if original_call_url:
+        description += (
+            f"\n\n[See the original call that made this happen]({original_call_url})"
+        )
     payload = {
         "username": "Premium Green Candle",
         "embeds": [
             {
                 "title": f"+{percentage}% · ${ticker} · GREEN CANDLE",
                 "url": axiom_url,
-                "description": f"**Premium just caught ${ticker} hitting +{percentage}%** · 🟣 Solana",
+                "description": description,
                 "color": 0x62E6A7,
             }
         ],
@@ -528,20 +540,28 @@ def send_momentum_alert(webhook_url, coin, gain_percent, elapsed, rug):
                         "value": rug["deployer"],
                         "inline": False,
                     },
-                    {
-                        "name": f"RUG RISK • {rating}",
-                        "value": rug["details"],
-                        "inline": False,
-                    },
+                    {"name": "Why this score", "value": rug["details"], "inline": False},
                 ],
                 "footer": {
-                    "text": "Automated on-chain screening from RugCheck and Axiom data — not a guarantee."
+                    "text": f"RUG RISK • {rating} · Automated screening — not a guarantee."
                 },
             }
         ],
     }
-    response = requests.post(webhook_url, json=payload, timeout=15)
+    response = requests.post(
+        webhook_url,
+        params={"wait": "true"},
+        json=payload,
+        timeout=15,
+    )
     response.raise_for_status()
+    message = response.json()
+    if message.get("guild_id") and message.get("channel_id") and message.get("id"):
+        return (
+            f"https://discord.com/channels/{message['guild_id']}/"
+            f"{message['channel_id']}/{message['id']}"
+        )
+    return None
 
 
 def choose_webhook(rating, routes):
@@ -572,12 +592,44 @@ def passes_audit(coin, market_cap, settings):
     if global_fees is None:
         global_fees = number_value(extra, "global_fees_paid", "globalFeesPaid", "global_fees_paid_sol", "globalFeesPaidSol") or 0
     twitter = first_value(coin, "twitter", "twitterUrl", "twitter_url")
+    top_ten = percentage_value(
+        coin,
+        "top_10_holders",
+        "top10HoldersPercent",
+        "top_10_holders_percent",
+    )
+    developer = percentage_value(
+        coin,
+        "dev_holds_percent",
+        "developerHoldingPercent",
+        "developer_holding_percent",
+    )
+    snipers = percentage_value(
+        coin,
+        "snipers_hold_percent",
+        "sniperPercentage",
+        "sniper_percentage",
+    )
+    concentration_ok = (
+        (settings["max_top_ten"] <= 0 or (top_ten is not None and top_ten <= settings["max_top_ten"]))
+        and (settings["max_developer"] <= 0 or (developer is not None and developer <= settings["max_developer"]))
+        and (settings["max_snipers"] <= 0 or (snipers is not None and snipers <= settings["max_snipers"]))
+    )
+    authorities_ok = (
+        not settings["require_revoked_authorities"]
+        or (
+            not first_value(coin, "mint_authority", "mintAuthority")
+            and not first_value(coin, "freeze_authority", "freezeAuthority")
+        )
+    )
     return (
         age_minutes <= settings["max_age"]
         and pro_traders >= settings["min_pro_traders"]
         and market_cap >= settings["min_market_cap"]
         and global_fees >= settings["min_global_fees"]
         and (not settings["require_twitter"] or bool(twitter))
+        and concentration_ok
+        and authorities_ok
     )
 
 
@@ -610,6 +662,7 @@ async def run_bot():
     green_candle_percent = float(os.getenv("GREEN_CANDLE_PERCENT", "100"))
     early_momentum_percent = float(os.getenv("EARLY_MOMENTUM_PERCENT", "10"))
     early_momentum_window = float(os.getenv("EARLY_MOMENTUM_WINDOW_SECONDS", "15"))
+    early_momentum_hold = float(os.getenv("EARLY_MOMENTUM_HOLD_SECONDS", "2"))
     secondary_webhook_url = os.getenv("DISCORD_SECONDARY_WEBHOOK_URL", "").strip()
     webhook_routes = [
         (float(os.getenv("DISCORD_WEBHOOK_MIN_RATING", "4")), webhook_url),
@@ -619,13 +672,21 @@ async def run_bot():
     refresh_token = os.environ["AXIOM_REFRESH_TOKEN"]
     start_market_cap = float(os.getenv("START_MARKET_CAP", "5000"))
     target_market_cap = float(os.getenv("TARGET_MARKET_CAP", "20000"))
+    max_tracking_entry_cap = float(os.getenv("MAX_TRACKING_ENTRY_CAP", "7500"))
     move_window_seconds = float(os.getenv("MOVE_WINDOW_SECONDS", "40"))
     audit_settings = {
         "max_age": float(os.getenv("AUDIT_MAX_AGE_MINUTES", "15")),
-        "min_pro_traders": float(os.getenv("AUDIT_MIN_PRO_TRADERS", "2")),
+        "min_pro_traders": float(os.getenv("AUDIT_MIN_PRO_TRADERS", "0")),
         "min_market_cap": float(os.getenv("AUDIT_MIN_MARKET_CAP", "5000")),
-        "min_global_fees": float(os.getenv("AUDIT_MIN_GLOBAL_FEES_SOL", "0.2")),
+        "min_global_fees": float(os.getenv("AUDIT_MIN_GLOBAL_FEES_SOL", "0")),
         "require_twitter": os.getenv("AUDIT_REQUIRE_TWITTER", "true").lower() == "true",
+        "max_top_ten": float(os.getenv("AUDIT_MAX_TOP_10_PERCENT", "20")),
+        "max_developer": float(os.getenv("AUDIT_MAX_DEV_HOLDING_PERCENT", "10")),
+        "max_snipers": float(os.getenv("AUDIT_MAX_SNIPER_PERCENT", "10")),
+        "require_revoked_authorities": os.getenv(
+            "AUDIT_REQUIRE_REVOKED_AUTHORITIES", "true"
+        ).lower()
+        == "true",
     }
 
     alerted_coins = load_alerted_coins()
@@ -674,7 +735,7 @@ async def run_bot():
             return
 
         if move is None:
-            if market_cap >= target_market_cap:
+            if market_cap > max_tracking_entry_cap:
                 return
             moves[address] = {
                 "started_at": now,
@@ -682,6 +743,8 @@ async def run_bot():
                 "momentum_sent": False,
                 "green_candle_sent": False,
                 "last_update": now,
+                "momentum_since": None,
+                "momentum_message_url": None,
                 "rug_task": asyncio.create_task(
                     asyncio.to_thread(get_rug_analysis, address, coin)
                 ),
@@ -708,14 +771,21 @@ async def run_bot():
 
         green_candle_target = move["started_cap"] * (1 + green_candle_percent / 100)
         momentum_target = move["started_cap"] * (1 + early_momentum_percent / 100)
+        if market_cap >= momentum_target:
+            if move["momentum_since"] is None:
+                move["momentum_since"] = now
+        else:
+            move["momentum_since"] = None
         if (
             green_candle_webhook_url
             and not move["momentum_sent"]
             and elapsed <= early_momentum_window
             and market_cap >= momentum_target
+            and move["momentum_since"] is not None
+            and now - move["momentum_since"] >= early_momentum_hold
         ):
             rug = await move["rug_task"]
-            await asyncio.to_thread(
+            move["momentum_message_url"] = await asyncio.to_thread(
                 send_momentum_alert,
                 green_candle_webhook_url,
                 coin,
@@ -731,14 +801,16 @@ async def run_bot():
             and not move["green_candle_sent"]
             and market_cap >= green_candle_target
         ):
+            actual_gain = (market_cap / move["started_cap"] - 1) * 100
             await asyncio.to_thread(
                 send_green_candle_alert,
                 green_candle_webhook_url,
                 coin,
-                green_candle_percent,
+                round(actual_gain),
+                move["momentum_message_url"],
             )
             move["green_candle_sent"] = True
-            logging.info("Green Candle alerted %s at +%g%%", address, green_candle_percent)
+            logging.info("Green Candle alerted %s at +%.0f%%", address, actual_gain)
 
         if market_cap < target_market_cap:
             return

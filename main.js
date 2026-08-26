@@ -14,6 +14,7 @@ const settingDefaults = {
   GREEN_CANDLE_PERCENT: "100",
   EARLY_MOMENTUM_PERCENT: "10",
   EARLY_MOMENTUM_WINDOW_SECONDS: "15",
+  EARLY_MOMENTUM_HOLD_SECONDS: "2",
   DISCORD_WEBHOOK_MIN_RATING: "4",
   DISCORD_SECONDARY_WEBHOOK_URL: "",
   DISCORD_SECONDARY_MIN_RATING: "2",
@@ -25,12 +26,17 @@ const settingDefaults = {
   CF_CLEARANCE: "",
   START_MARKET_CAP: "5000",
   TARGET_MARKET_CAP: "20000",
+  MAX_TRACKING_ENTRY_CAP: "7500",
   MOVE_WINDOW_SECONDS: "40",
   AUDIT_MAX_AGE_MINUTES: "15",
-  AUDIT_MIN_PRO_TRADERS: "2",
+  AUDIT_MIN_PRO_TRADERS: "0",
   AUDIT_MIN_MARKET_CAP: "5000",
-  AUDIT_MIN_GLOBAL_FEES_SOL: "0.2",
+  AUDIT_MIN_GLOBAL_FEES_SOL: "0",
   AUDIT_REQUIRE_TWITTER: "true",
+  AUDIT_MAX_TOP_10_PERCENT: "20",
+  AUDIT_MAX_DEV_HOLDING_PERCENT: "10",
+  AUDIT_MAX_SNIPER_PERCENT: "10",
+  AUDIT_REQUIRE_REVOKED_AUTHORITIES: "true",
 };
 
 function localDataDir() {
@@ -112,6 +118,7 @@ function saveSettings(values) {
 
   const start = Number(settings.START_MARKET_CAP);
   const target = Number(settings.TARGET_MARKET_CAP);
+  const maxEntry = Number(settings.MAX_TRACKING_ENTRY_CAP);
   const seconds = Number(settings.MOVE_WINDOW_SECONDS);
   const primaryRating = Number(settings.DISCORD_WEBHOOK_MIN_RATING);
   const secondaryRating = Number(settings.DISCORD_SECONDARY_MIN_RATING);
@@ -120,15 +127,22 @@ function saveSettings(values) {
     "AUDIT_MIN_PRO_TRADERS",
     "AUDIT_MIN_MARKET_CAP",
     "AUDIT_MIN_GLOBAL_FEES_SOL",
+    "AUDIT_MAX_TOP_10_PERCENT",
+    "AUDIT_MAX_DEV_HOLDING_PERCENT",
+    "AUDIT_MAX_SNIPER_PERCENT",
   ].map((name) => Number(settings[name]));
   const greenCandlePercent = Number(settings.GREEN_CANDLE_PERCENT);
   const earlyMomentumPercent = Number(settings.EARLY_MOMENTUM_PERCENT);
   const earlyMomentumWindow = Number(settings.EARLY_MOMENTUM_WINDOW_SECONDS);
+  const earlyMomentumHold = Number(settings.EARLY_MOMENTUM_HOLD_SECONDS);
   if (!Number.isFinite(start) || start <= 0) {
     return { ok: false, error: "Starting market cap must be above zero." };
   }
   if (!Number.isFinite(target) || target <= start) {
     return { ok: false, error: "Target market cap must be above the starting cap." };
+  }
+  if (!Number.isFinite(maxEntry) || maxEntry < start || maxEntry >= target) {
+    return { ok: false, error: "Maximum tracking entry must be between the starting and target caps." };
   }
   if (!Number.isFinite(seconds) || seconds <= 0) {
     return { ok: false, error: "Movement window must be above zero seconds." };
@@ -142,18 +156,27 @@ function saveSettings(values) {
   if (auditValues.some((value) => !Number.isFinite(value) || value < 0)) {
     return { ok: false, error: "Audit filter values cannot be negative." };
   }
+  if (
+    Number(settings.AUDIT_MAX_TOP_10_PERCENT) > 100 ||
+    Number(settings.AUDIT_MAX_DEV_HOLDING_PERCENT) > 100 ||
+    Number(settings.AUDIT_MAX_SNIPER_PERCENT) > 100
+  ) {
+    return { ok: false, error: "Holding percentages cannot be above 100%." };
+  }
   if (!Number.isFinite(greenCandlePercent) || greenCandlePercent <= 0) {
     return { ok: false, error: "Green Candle percentage must be above zero." };
   }
   if (
     !Number.isFinite(earlyMomentumPercent) || earlyMomentumPercent <= 0 ||
-    !Number.isFinite(earlyMomentumWindow) || earlyMomentumWindow <= 0
+    !Number.isFinite(earlyMomentumWindow) || earlyMomentumWindow <= 0 ||
+    !Number.isFinite(earlyMomentumHold) || earlyMomentumHold < 0
   ) {
-    return { ok: false, error: "Early momentum values must be above zero." };
+    return { ok: false, error: "Momentum gain and window must be positive; hold time cannot be negative." };
   }
 
   settings.START_MARKET_CAP = String(start);
   settings.TARGET_MARKET_CAP = String(target);
+  settings.MAX_TRACKING_ENTRY_CAP = String(maxEntry);
   settings.MOVE_WINDOW_SECONDS = String(seconds);
   settings.DISCORD_WEBHOOK_MIN_RATING = String(primaryRating);
   settings.DISCORD_SECONDARY_MIN_RATING = String(secondaryRating);

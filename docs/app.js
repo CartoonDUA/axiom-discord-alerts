@@ -50,7 +50,7 @@ function renderMovement(movement) {
   document.getElementById("targetCap").textContent = formatCap(target);
   document.getElementById("moveWindow").textContent = `${seconds}s`;
   document.getElementById("movementSentence").textContent =
-    `Alert when a coin climbs from ${formatCap(start)} to ${formatCap(target)} within ${seconds} seconds.`;
+    `Track from ${formatCap(start)}, ignore entries above ${formatCap(movement.maxTrackingEntryCap)}, and alert at ${formatCap(target)} within ${seconds} seconds.`;
   document.getElementById("rangeStart").style.left = `${startPosition}%`;
   document.getElementById("rangeEnd").style.left = `${endPosition}%`;
   document.getElementById("rangeFill").style.left = `${startPosition}%`;
@@ -62,9 +62,15 @@ function renderAudit(audit) {
   document.getElementById("proTraders").textContent = `≥ ${audit.minProTraders}`;
   document.getElementById("minMarketCap").textContent = `≥ ${formatCap(audit.minMarketCap)}`;
   document.getElementById("globalFees").textContent = `≥ ${audit.minGlobalFeesSol} SOL`;
+  document.getElementById("maxTopTen").textContent = `≤ ${audit.maxTopTenPercent}%`;
+  document.getElementById("maxDeveloper").textContent = `≤ ${audit.maxDeveloperPercent}%`;
+  document.getElementById("maxSnipers").textContent = `≤ ${audit.maxSniperPercent}%`;
   const twitter = document.getElementById("twitterRequired");
   twitter.textContent = audit.requireTwitter ? "Required" : "Not required";
   twitter.className = audit.requireTwitter ? "enabled" : "";
+  const authorities = document.getElementById("authoritiesRequired");
+  authorities.textContent = audit.requireRevokedAuthorities ? "Must be revoked" : "Not required";
+  authorities.className = audit.requireRevokedAuthorities ? "enabled" : "";
 }
 
 function coinCard(coin) {

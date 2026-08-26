@@ -404,7 +404,7 @@ footer i { margin-right: 6px; color: #4b9f78; }
   background: rgba(255, 255, 255, 0.018);
 }
 
-.trigger-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.8fr); gap: 10px; }
+.trigger-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .audit-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .audit-fields label { display: flex; flex-direction: column; gap: 7px; }
 .audit-fields label > span { color: #9ba1ad; font-size: 10px; font-weight: 600; }
@@ -514,6 +514,4 @@ footer i { margin-right: 6px; color: #4b9f78; }
 
 @media (max-width: 700px) {
   .route-grid, .two-fields, .momentum-fields { grid-template-columns: 1fr; }
-  .trigger-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .trigger-fields label:last-child { grid-column: 1 / -1; }
 }

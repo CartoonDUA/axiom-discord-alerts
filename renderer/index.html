@@ -162,6 +162,10 @@
                     <div class="input-prefix"><i class="fa-solid fa-dollar-sign"></i><input data-setting="START_MARKET_CAP" type="number" min="1" step="1" required /></div>
                   </label>
                   <label>
+                    <span>Maximum tracking entry</span>
+                    <div class="input-prefix"><i class="fa-solid fa-door-open"></i><input data-setting="MAX_TRACKING_ENTRY_CAP" type="number" min="1" step="1" required /></div>
+                  </label>
+                  <label>
                     <span>To</span>
                     <div class="input-prefix"><i class="fa-solid fa-bullseye"></i><input data-setting="TARGET_MARKET_CAP" type="number" min="1" step="1" required /></div>
                   </label>
@@ -198,6 +202,18 @@
                     <span>Minimum global fees</span>
                     <div class="input-prefix"><i class="fa-solid fa-coins"></i><input data-setting="AUDIT_MIN_GLOBAL_FEES_SOL" type="number" min="0" step="0.01" required /><em>SOL</em></div>
                   </label>
+                  <label>
+                    <span>Maximum top 10 holders</span>
+                    <div class="input-prefix"><i class="fa-solid fa-chart-pie"></i><input data-setting="AUDIT_MAX_TOP_10_PERCENT" type="number" min="0" max="100" step="0.1" required /><em>%</em></div>
+                  </label>
+                  <label>
+                    <span>Maximum developer holding</span>
+                    <div class="input-prefix"><i class="fa-solid fa-code"></i><input data-setting="AUDIT_MAX_DEV_HOLDING_PERCENT" type="number" min="0" max="100" step="0.1" required /><em>%</em></div>
+                  </label>
+                  <label>
+                    <span>Maximum snipers</span>
+                    <div class="input-prefix"><i class="fa-solid fa-crosshairs"></i><input data-setting="AUDIT_MAX_SNIPER_PERCENT" type="number" min="0" max="100" step="0.1" required /><em>%</em></div>
+                  </label>
                 </div>
 
                 <label class="toggle-field">
@@ -205,6 +221,12 @@
                   <input data-setting="AUDIT_REQUIRE_TWITTER" type="checkbox" />
                   <i class="toggle-control"></i>
                 </label>
+                <label class="toggle-field">
+                  <span><i class="fa-solid fa-ban"></i><span><strong>Require revoked authorities</strong><small>Reject coins with active mint or freeze control</small></span></span>
+                  <input data-setting="AUDIT_REQUIRE_REVOKED_AUTHORITIES" type="checkbox" />
+                  <i class="toggle-control"></i>
+                </label>
+                <p class="routing-note"><i class="fa-solid fa-circle-info"></i> Set a concentration maximum to 0 to disable that filter.</p>
               </section>
 
               <section class="settings-card">
@@ -251,6 +273,10 @@
                       <label class="wide-field">
                         <span>Momentum window</span>
                         <div class="input-prefix"><i class="fa-regular fa-clock"></i><input data-setting="EARLY_MOMENTUM_WINDOW_SECONDS" type="number" min="1" step="1" required /><em>sec</em></div>
+                      </label>
+                      <label class="wide-field">
+                        <span>Hold gain before calling</span>
+                        <div class="input-prefix"><i class="fa-solid fa-hourglass-half"></i><input data-setting="EARLY_MOMENTUM_HOLD_SECONDS" type="number" min="0" step="0.5" required /><em>sec</em></div>
                       </label>
                     </div>
                   </div>

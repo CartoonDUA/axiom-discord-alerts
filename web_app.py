@@ -28,6 +28,7 @@ SETTING_DEFAULTS = {
     "GREEN_CANDLE_PERCENT": "100",
     "EARLY_MOMENTUM_PERCENT": "10",
     "EARLY_MOMENTUM_WINDOW_SECONDS": "15",
+    "EARLY_MOMENTUM_HOLD_SECONDS": "2",
     "DISCORD_WEBHOOK_MIN_RATING": "4",
     "DISCORD_SECONDARY_WEBHOOK_URL": "",
     "DISCORD_SECONDARY_MIN_RATING": "2",
@@ -39,12 +40,17 @@ SETTING_DEFAULTS = {
     "CF_CLEARANCE": "",
     "START_MARKET_CAP": "5000",
     "TARGET_MARKET_CAP": "20000",
+    "MAX_TRACKING_ENTRY_CAP": "7500",
     "MOVE_WINDOW_SECONDS": "40",
     "AUDIT_MAX_AGE_MINUTES": "15",
-    "AUDIT_MIN_PRO_TRADERS": "2",
+    "AUDIT_MIN_PRO_TRADERS": "0",
     "AUDIT_MIN_MARKET_CAP": "5000",
-    "AUDIT_MIN_GLOBAL_FEES_SOL": "0.2",
+    "AUDIT_MIN_GLOBAL_FEES_SOL": "0",
     "AUDIT_REQUIRE_TWITTER": "true",
+    "AUDIT_MAX_TOP_10_PERCENT": "20",
+    "AUDIT_MAX_DEV_HOLDING_PERCENT": "10",
+    "AUDIT_MAX_SNIPER_PERCENT": "10",
+    "AUDIT_REQUIRE_REVOKED_AUTHORITIES": "true",
 }
 
 bot_process = None
@@ -90,6 +96,7 @@ def save_settings(values):
 
     start = float(settings["START_MARKET_CAP"])
     target = float(settings["TARGET_MARKET_CAP"])
+    max_entry = float(settings["MAX_TRACKING_ENTRY_CAP"])
     seconds = float(settings["MOVE_WINDOW_SECONDS"])
     primary_rating = float(settings["DISCORD_WEBHOOK_MIN_RATING"])
     secondary_rating = float(settings["DISCORD_SECONDARY_MIN_RATING"])
@@ -97,26 +104,35 @@ def save_settings(values):
     audit_pro_traders = float(settings["AUDIT_MIN_PRO_TRADERS"])
     audit_market_cap = float(settings["AUDIT_MIN_MARKET_CAP"])
     audit_fees = float(settings["AUDIT_MIN_GLOBAL_FEES_SOL"])
+    audit_top_ten = float(settings["AUDIT_MAX_TOP_10_PERCENT"])
+    audit_developer = float(settings["AUDIT_MAX_DEV_HOLDING_PERCENT"])
+    audit_snipers = float(settings["AUDIT_MAX_SNIPER_PERCENT"])
     green_candle_percent = float(settings["GREEN_CANDLE_PERCENT"])
     early_momentum_percent = float(settings["EARLY_MOMENTUM_PERCENT"])
     early_momentum_window = float(settings["EARLY_MOMENTUM_WINDOW_SECONDS"])
+    early_momentum_hold = float(settings["EARLY_MOMENTUM_HOLD_SECONDS"])
     if start <= 0:
         return {"ok": False, "error": "Starting market cap must be above zero."}
     if target <= start:
         return {"ok": False, "error": "Target market cap must be above the starting cap."}
+    if not start <= max_entry < target:
+        return {"ok": False, "error": "Maximum tracking entry must be between the starting and target caps."}
     if seconds <= 0:
         return {"ok": False, "error": "Movement window must be above zero seconds."}
     if not 0 <= primary_rating <= 10 or not 0 <= secondary_rating <= 10:
         return {"ok": False, "error": "Webhook rug ratings must be between 0 and 10."}
-    if min(audit_age, audit_pro_traders, audit_market_cap, audit_fees) < 0:
+    if min(audit_age, audit_pro_traders, audit_market_cap, audit_fees, audit_top_ten, audit_developer, audit_snipers) < 0:
         return {"ok": False, "error": "Audit filter values cannot be negative."}
+    if max(audit_top_ten, audit_developer, audit_snipers) > 100:
+        return {"ok": False, "error": "Holding percentages cannot be above 100%."}
     if green_candle_percent <= 0:
         return {"ok": False, "error": "Green Candle percentage must be above zero."}
-    if early_momentum_percent <= 0 or early_momentum_window <= 0:
-        return {"ok": False, "error": "Early momentum values must be above zero."}
+    if early_momentum_percent <= 0 or early_momentum_window <= 0 or early_momentum_hold < 0:
+        return {"ok": False, "error": "Momentum gain and window must be positive; hold time cannot be negative."}
 
     settings["START_MARKET_CAP"] = str(int(start) if start.is_integer() else start)
     settings["TARGET_MARKET_CAP"] = str(int(target) if target.is_integer() else target)
+    settings["MAX_TRACKING_ENTRY_CAP"] = str(int(max_entry) if max_entry.is_integer() else max_entry)
     settings["MOVE_WINDOW_SECONDS"] = str(int(seconds) if seconds.is_integer() else seconds)
     settings["DISCORD_WEBHOOK_MIN_RATING"] = str(int(primary_rating) if primary_rating.is_integer() else primary_rating)
     settings["DISCORD_SECONDARY_MIN_RATING"] = str(int(secondary_rating) if secondary_rating.is_integer() else secondary_rating)
@@ -125,12 +141,17 @@ def save_settings(values):
         ("AUDIT_MIN_PRO_TRADERS", audit_pro_traders),
         ("AUDIT_MIN_MARKET_CAP", audit_market_cap),
         ("AUDIT_MIN_GLOBAL_FEES_SOL", audit_fees),
+        ("AUDIT_MAX_TOP_10_PERCENT", audit_top_ten),
+        ("AUDIT_MAX_DEV_HOLDING_PERCENT", audit_developer),
+        ("AUDIT_MAX_SNIPER_PERCENT", audit_snipers),
     ):
         settings[name] = str(int(value) if value.is_integer() else value)
     settings["AUDIT_REQUIRE_TWITTER"] = "true" if settings["AUDIT_REQUIRE_TWITTER"].lower() == "true" else "false"
+    settings["AUDIT_REQUIRE_REVOKED_AUTHORITIES"] = "true" if settings["AUDIT_REQUIRE_REVOKED_AUTHORITIES"].lower() == "true" else "false"
     settings["GREEN_CANDLE_PERCENT"] = str(int(green_candle_percent) if green_candle_percent.is_integer() else green_candle_percent)
     settings["EARLY_MOMENTUM_PERCENT"] = str(int(early_momentum_percent) if early_momentum_percent.is_integer() else early_momentum_percent)
     settings["EARLY_MOMENTUM_WINDOW_SECONDS"] = str(int(early_momentum_window) if early_momentum_window.is_integer() else early_momentum_window)
+    settings["EARLY_MOMENTUM_HOLD_SECONDS"] = str(int(early_momentum_hold) if early_momentum_hold.is_integer() else early_momentum_hold)
 
     current = ENV_FILE.read_text(encoding="utf-8") if ENV_FILE.exists() else ""
     found = set()
@@ -171,6 +192,7 @@ def public_state():
         "movement": {
             "startMarketCap": settings["START_MARKET_CAP"],
             "targetMarketCap": settings["TARGET_MARKET_CAP"],
+            "maxTrackingEntryCap": settings["MAX_TRACKING_ENTRY_CAP"],
             "windowSeconds": settings["MOVE_WINDOW_SECONDS"],
         },
         "audit": {
@@ -179,6 +201,10 @@ def public_state():
             "minMarketCap": settings["AUDIT_MIN_MARKET_CAP"],
             "minGlobalFeesSol": settings["AUDIT_MIN_GLOBAL_FEES_SOL"],
             "requireTwitter": settings["AUDIT_REQUIRE_TWITTER"].lower() == "true",
+            "maxTopTenPercent": settings["AUDIT_MAX_TOP_10_PERCENT"],
+            "maxDeveloperPercent": settings["AUDIT_MAX_DEV_HOLDING_PERCENT"],
+            "maxSniperPercent": settings["AUDIT_MAX_SNIPER_PERCENT"],
+            "requireRevokedAuthorities": settings["AUDIT_REQUIRE_REVOKED_AUTHORITIES"].lower() == "true",
         },
         "trackedCoins": current_coins,
     }

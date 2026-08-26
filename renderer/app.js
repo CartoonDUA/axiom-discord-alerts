@@ -61,6 +61,7 @@ function formatCap(value) {
 function showSettingsSummary(settings) {
   const start = Number(settings.START_MARKET_CAP || 5000);
   const target = Number(settings.TARGET_MARKET_CAP || 20000);
+  const maxEntry = Number(settings.MAX_TRACKING_ENTRY_CAP || 7500);
   const seconds = Number(settings.MOVE_WINDOW_SECONDS || 40);
   const rangeMax = target * 1.25;
   const startPosition = Math.max(4, Math.min(92, (start / rangeMax) * 100));
@@ -68,7 +69,7 @@ function showSettingsSummary(settings) {
 
   document.getElementById("rangeSummary").textContent = `${formatCap(start)} → ${formatCap(target)} · ${seconds}s`;
   document.getElementById("movementDescription").textContent =
-    `Alert when a coin moves from ${formatCap(start)} to ${formatCap(target)} within ${seconds} seconds.`;
+    `Track from ${formatCap(start)}, ignore entries above ${formatCap(maxEntry)}, and alert at ${formatCap(target)} within ${seconds} seconds.`;
   document.getElementById("rangeMax").textContent = `${formatCap(rangeMax)}+`;
   document.getElementById("rangeStart").style.left = `${startPosition}%`;
   document.getElementById("rangeEnd").style.left = `${endPosition}%`;

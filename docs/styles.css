@@ -157,7 +157,7 @@ main { width: min(1180px, calc(100% - 40px)); margin: 0 auto; padding: 58px 0 48
 .filter-grid i { color: #858c9a; font-size: 11px; }
 .filter-grid span { color: #9197a3; font-size: 9px; }
 .filter-grid strong { font-size: 10px; }
-.filter-grid .twitter-filter { grid-column: 1 / -1; }
+.filter-grid .twitter-filter, .filter-grid .authority-filter { grid-column: 1 / -1; }
 .twitter-filter strong.enabled { color: var(--green); }
 
 .tracking-panel, .events-panel { margin-top: 16px; border-radius: 22px; overflow: hidden; }
@@ -217,7 +217,7 @@ footer a { color: #8d849f; text-decoration: none; }
   .movement-values { grid-template-columns: 1fr auto 1fr; }
   .window-value { grid-column: 1 / -1; padding: 15px 0 0; border-top: 1px solid var(--border); border-left: 0; }
   .filter-grid { grid-template-columns: 1fr; }
-  .filter-grid .twitter-filter { grid-column: auto; }
+  .filter-grid .twitter-filter, .filter-grid .authority-filter { grid-column: auto; }
   .offline-notice { grid-template-columns: auto 1fr; }
   .offline-notice button { grid-column: 1 / -1; }
   .event-row { grid-template-columns: 48px 26px 1fr; }
