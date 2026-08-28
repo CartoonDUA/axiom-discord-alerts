@@ -8,20 +8,48 @@ On Windows PCs that block unsigned desktop applications, double-click `Start Axi
 
 Use **Settings** inside the app to edit the starting cap, target cap, movement window, Discord webhook, Axiom tokens, and optional Cloudflare clearance value. The settings are stored only in the local `.env` file.
 
-## Setup
+## Easy installation on Windows
 
-1. Copy `.env.example` to `.env`, or open **Settings** in the desktop app and enter the values there.
-2. While signed in to Axiom, open your browser's developer tools, go to **Application**, then **Cookies**, then `https://axiom.trade`. Copy the values of `auth-access-token` and `auth-refresh-token` into the matching settings fields.
-3. Install the Python and desktop dependencies:
+### 1. Download the project
+
+Click **Code**, then **Download ZIP** on GitHub. Extract the ZIP somewhere easy to find, such as your Desktop.
+
+### 2. Install the required programs
+
+Install [Python](https://www.python.org/downloads/) and [Node.js](https://nodejs.org/). Keep the default installation options enabled.
+
+### 3. Install the project
+
+Open the extracted `axiom-discord-alerts` folder. Right-click an empty area inside the folder and select **Open in Terminal**, then run:
 
 ```powershell
 py -m venv .venv
-.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+.venv\Scripts\python.exe -m pip install -r requirements.txt
 npm install
 ```
 
-4. Run the desktop app:
+You only need to run these installation commands once.
+
+### 4. Open Axiom Alerts
+
+Double-click `Start Axiom Alerts.cmd`. The app opens at `http://127.0.0.1:8765` and stops when you close its command window.
+
+### 5. Add your settings
+
+Click **Settings** and add:
+
+- Your Discord webhook URL.
+- Your Axiom access token.
+- Your Axiom refresh token.
+- Your Discord bot token and server ID if you want the `/check` command.
+
+To find the Axiom tokens, sign in to Axiom and open your browser's developer tools. Go to **Application** → **Cookies** → `https://axiom.trade`, then copy `auth-access-token` and `auth-refresh-token` into the matching fields.
+
+Click **Save settings**, then **Start monitor**. Your private settings are saved only in the local `.env` file, which Git ignores.
+
+## Alternative Electron window
+
+After completing the installation above, you can open the Electron version with:
 
 ```powershell
 npm start
